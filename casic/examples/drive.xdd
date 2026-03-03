@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DeviceDescription>
+  <Object index="0x2000" name="SpeedRef" dataType="UNSIGNED16" accessType="rw" lowLimit="0" highLimit="5000" />
+  <Object index="0x2001" name="Torque">
+    <SubObject subIndex="0x00" name="ActualTorque" dataType="INTEGER16" accessType="ro" />
+  </Object>
+  <CommunicationObject name="SDO_RX" cobId="0x600" />
+  <CommunicationObject name="TPDO1" cobId="0x180" />
+</DeviceDescription>

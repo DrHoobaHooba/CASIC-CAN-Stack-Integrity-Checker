@@ -1,0 +1,32 @@
+[FileInfo]
+FileName=node.eds
+
+[DeviceInfo]
+VendorName=ExampleVendor
+ProductName=ExampleNode
+
+[1200]
+ParameterName=SDO Server Parameter
+COB-ID=0x600
+
+[1800]
+ParameterName=TPDO1 Communication Parameter
+COB-ID=0x180
+
+[2000]
+ParameterName=ControlWord
+DataType=0x0006
+AccessType=rw
+DefaultValue=0
+LowLimit=0
+HighLimit=65535
+PDOMapping=1
+
+[2001sub0]
+ParameterName=StatusWord
+DataType=0x0006
+AccessType=ro
+DefaultValue=0
+LowLimit=0
+HighLimit=65535
+PDOMapping=1

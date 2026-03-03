@@ -1,0 +1,104 @@
+# Global defaults applied to every enabled protocol unless overridden below.
+global:
+  # CAN interface/backend selector. Examples: "can0" (SocketCAN), "pcan:PCAN_USBBUS1" (PCAN).
+  interface: pcan:PCAN_USBBUS1
+  # Sending mode: 1 = max speed (current behavior), 0 = reserved for future rate-limited mode.
+  rate_mode: 1
+  # Source addressing mode. "rand" means randomized source behavior where applicable.
+  source_mode: rand
+  # Generic destination. Protocols may reinterpret this (e.g., SDO RX COB-ID fallback for CANopen).
+  destination: rand
+  # Number of primary frames generated per enabled protocol run.
+  packet_count: 1000000
+  # Print progress every N generated frames.
+  print_interval: 5000
+  # ISIC-compatibility reserved flag (currently parsed but not used).
+  flag_f: 0
+  # ISIC-compatibility reserved flag (currently parsed but not used).
+  flag_v: 0
+  # ISIC-compatibility reserved flag (currently parsed but not used).
+  flag_i: 0
+  # RNG seed for reproducible fuzz runs.
+  seed: 1337
+  # Probability (0..1) that each mutation in a mutation_chain is applied.
+  mutation_rate: 0.95
+
+# Per-protocol sections. Set enabled=false to skip that protocol entirely.
+protocols:
+  cansic:
+    # Enable/disable raw CAN fuzzing section.
+    enabled: true
+    # Allow CAN-FD frame generation for this section.
+    can_fd: true
+    # Single fallback mutation mode when no mutation_chain is provided.
+    mutation: structured
+    # Ordered chain of mutations applied to payloads.
+    mutation_chain: bitflip,nibbleflip,byteflip,boundary,swap,arithmetic,truncate,expand,structured
+    # Minimum random payload length (bytes).
+    payload_min_len: 0
+    # Maximum random payload length (bytes); capped by protocol frame limits.
+    payload_max_len: 64
+    # Probability (0..1) to use 29-bit extended CAN ID.
+    raw_extended_id_probability: 0.8
+    # Probability (0..1) to emit CAN-FD frames (in addition to can_fd setting).
+    raw_fd_probability: 0.95
+    # Probability (0..1) to tag frame as error-injection request (backend dependent).
+    raw_error_injection_probability: 0.35
+    # Output file for replay capture of sent frames.
+    save_replay_file: ./replay/cansic_indepth.jsonl
+
+  udsic:
+    # Enable/disable UDS fuzzing section.
+    enabled: false
+    # UDS request arbitration ID (tester -> ECU).
+    uds_request_id: 0x7E0
+    # Expected UDS response arbitration ID filter (ECU -> tester).
+    uds_response_id: 0x7E8
+    # Probability (0..1) to force invalid/unusual UDS service IDs.
+    uds_invalid_sid_probability: 0.7
+    # Probability (0..1) to corrupt ISO-TP PCI bytes.
+    uds_malformed_pci_probability: 0.75
+    # Maximum application payload length before ISO-TP segmentation.
+    uds_max_payload_len: 512
+    # Output file for replay capture of sent UDS frames.
+    save_replay_file: ./replay/udsic_indepth.jsonl
+
+  j1939sic:
+    # Enable/disable J1939 fuzzing section.
+    enabled: false
+    # J1939 priority (0 highest .. 7 lowest).
+    j1939_priority: 0
+    # J1939 PGN base value for generation.
+    j1939_pgn: 0xFEF2
+    # J1939 source address.
+    j1939_sa: 0x80
+    # J1939 destination address.
+    j1939_da: 0xFE
+    # Probability (0..1) to generate transport-protocol-like traffic patterns.
+    j1939_tp_probability: 0.8
+    # Probability (0..1) to use boundary/invalid-ish PGN variants.
+    j1939_invalid_pgn_probability: 0.6
+    # Output file for replay capture of sent J1939 frames.
+    save_replay_file: ./replay/j1939sic_indepth.jsonl
+
+  cosic:
+    # Enable/disable CANopen fuzzing section.
+    enabled: true
+    # CANopen node ID used for deriving standard COB-IDs when overrides are not set.
+    node_id: 0x61
+    # Explicit SDO client->server COB-ID override.
+    sdo_rx_cobid: 0x661
+    # Explicit SDO server->client COB-ID override.
+    sdo_tx_cobid: 0x5E1
+    # Explicit TPDO1 COB-ID override.
+    tpdo1_cobid: 0x1E1
+    # Explicit RPDO1 COB-ID override.
+    rpdo1_cobid: 0x261
+    # Probability (0..1) to corrupt SDO command/subindex fields.
+    canopen_invalid_sdo_probability: 0.8
+    # Frame-family bias: balanced | sdo-heavy | pdo-heavy | control-heavy.
+    canopen_mode_bias: control-heavy
+    # CANopen EDS file used to load object dictionary and mapping metadata.
+    eds: ./casic/examples/node.eds
+    # Output file for replay capture of sent CANopen frames.
+    save_replay_file: ./replay/cosic_indepth.jsonl

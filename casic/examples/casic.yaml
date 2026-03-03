@@ -1,0 +1,93 @@
+# Practical default profile. For maximum-aggression profile, see casic-indepth.yaml.
+global:
+  # For full aggressive profile using all fuzzing knobs, use: casic/examples/casic-indepth.yaml.
+  # CAN interface/backend selector. Example: pcan:PCAN_USBBUS1 or can0.
+  interface: pcan:PCAN_USBBUS1
+  # Sending mode: 1 = max speed (current active behavior), 0 = reserved for future throttling mode.
+  rate_mode: 1
+  # Source addressing strategy. "rand" keeps fuzzing randomized where protocol permits.
+  source_mode: rand
+  # Generic destination fallback. Protocols may reinterpret this value.
+  destination: rand
+  # Primary frame count per enabled protocol section.
+  packet_count: 10000
+  # Progress print frequency.
+  print_interval: 1000
+  # ISIC compatibility reserved flag (currently parsed, not used).
+  flag_f: 0
+  # ISIC compatibility reserved flag (currently parsed, not used).
+  flag_v: 0
+  # ISIC compatibility reserved flag (currently parsed, not used).
+  flag_i: 0
+  # Deterministic random seed.
+  seed: 42
+  # Per-mutation apply probability when mutation_chain is used.
+  mutation_rate: 0.7
+
+# Protocol blocks: enabled=false means section is skipped and all its parameters are ignored.
+protocols:
+  cansic:
+    # Enable raw CAN fuzzing.
+    enabled: true
+    # Generate CAN-FD frames when true.
+    can_fd: false
+    # Fallback single mutation mode when chain is absent.
+    mutation: bitflip
+    # Ordered mutation chain for payload fuzzing.
+    mutation_chain: bitflip,boundary,swap
+    # Minimum payload length in bytes.
+    payload_min_len: 2
+    # Maximum payload length in bytes.
+    payload_max_len: 8
+    # Probability to use 29-bit extended IDs.
+    raw_extended_id_probability: 0.1
+    # Probability to use CAN-FD per frame.
+    raw_fd_probability: 0.05
+    # Probability to request error-frame-style injection metadata.
+    raw_error_injection_probability: 0.02
+    # Replay output path for sent raw CAN frames.
+    save_replay_file: ./replay/cansic_from_yaml.jsonl
+
+  udsic:
+    # Enable UDS over CAN fuzzing.
+    enabled: false
+    # UDS request CAN-ID (tester -> ECU).
+    uds_request_id: 0x7E0
+    # UDS response CAN-ID filter (ECU -> tester).
+    uds_response_id: 0x7E8
+    # Probability of selecting invalid/unusual UDS SIDs.
+    uds_invalid_sid_probability: 0.1
+    # Probability of malformed ISO-TP PCI corruption.
+    uds_malformed_pci_probability: 0.2
+    # Max UDS payload before/with segmentation.
+    uds_max_payload_len: 128
+
+  j1939sic:
+    # Enable J1939 fuzzing.
+    enabled: false
+    # J1939 priority (0 highest .. 7 lowest).
+    j1939_priority: 3
+    # Base PGN value.
+    j1939_pgn: 0xFEF2
+    # Source address.
+    j1939_sa: 0x80
+    # Destination address.
+    j1939_da: 0xFE
+    # Probability of transport-protocol-like packet patterns.
+    j1939_tp_probability: 0.2
+    # Probability of boundary/invalid-ish PGN selection.
+    j1939_invalid_pgn_probability: 0.1
+
+  cosic:
+    # Enable CANopen fuzzing.
+    enabled: true
+    # CANopen node ID used for COB-ID derivation where applicable.
+    node_id: 97
+    # EDS dictionary file for object-based structured fuzzing.
+    eds: ./casic/examples/node.eds
+    # Probability of SDO command/subindex corruption.
+    canopen_invalid_sdo_probability: 0.15
+    # Traffic family bias: balanced | sdo-heavy | pdo-heavy | control-heavy.
+    canopen_mode_bias: sdo-heavy
+    # Replay output path for sent CANopen frames.
+    save_replay_file: ./replay/cosic_from_yaml.jsonl
