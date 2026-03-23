@@ -221,6 +221,8 @@ For an aggressive all-protocol profile with all fuzzing knobs enabled, use:
 casic --config ./casic/examples/casic-indepth.yaml
 ```
 
+`casic/examples/casic-indepth.yaml` enables all four protocol sections (`cansic`, `udsic`, `j1939sic`, `cosic`) and includes aggressive values for UDS sequence/NRC awareness and J1939 TP traffic probability.
+
 ### Deterministic node/address targeting examples
 
 ```bash
@@ -267,7 +269,7 @@ The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-
 - Mutation chaining and per-mutation application probability
 - UDS invalid SID, malformed ISO-TP PCI, variable payload range, multi-frame fuzzing, and sequence/NRC-aware service selection
 - J1939 PGN/priority/SA/DA fuzzing plus transport-protocol CM/DT burst sequencing and invalid-PGN probabilities
-- CANopen dictionary-aware SDO/PDO/NMT/EMCY/SYNC/TIME generation with SDO corruption probability and mode bias
+- CANopen dictionary-aware SDO/PDO/NMT/EMCY/SYNC/TIME generation with access-rights and limit-aware SDO behavior, PDO mapping semantics, SDO corruption probability, and mode bias
 
 ## Replay Support
 
@@ -287,12 +289,15 @@ cosic -i can0 -r 1 -s rand -d 0x600 -p1 -m1000 --replay ./replay_cosic.jsonl
 
 This roadmap is based on what is already implemented in the current codebase and highlights the next engineering priorities.
 
-### Current baseline (v0.0.2)
+### Current baseline (v0.0.3)
 
 - Multi-protocol fuzzers available: Raw CAN (`cansic`), UDS (`udsic`), J1939 (`j1939sic`), CANopen (`cosic`)
 - Unified YAML runner (`casic --config`) with per-protocol enable/disable behavior
 - Replay capture and replay execution (`--save-replay`, `--replay`)
 - CANopen EDS/XDD/XDC dictionary parsing with dictionary-aware generation
+- UDS sequence-aware and negative-response-aware request generation controls
+- J1939 transport-protocol CM/DT multi-packet burst sequencing
+- CANopen dictionary constraint usage in generation (access rights, limits, PDO mapping semantics)
 - Dry-send fallback when `python-can` backend is unavailable
 - Runtime validation for probability ranges and payload bounds with explicit error messages
 - `rate_mode=0` timer-based pacing in the engine loop (`rate_mode=1` unchanged for high-speed)
@@ -304,9 +309,10 @@ This roadmap is based on what is already implemented in the current codebase and
 - Completed in current baseline; focus is now on profiling/tuning pacing policies and documenting operational guidance.
 
 2. Protocol depth improvements
-- UDS: extend negative-response and service-sequence awareness (session/security timing scenarios)
-- J1939: improve transport-protocol realism for multi-packet message sequencing
-- CANopen: increase dictionary constraint usage (access rights, limits, PDO mapping semantics)
+- Completed in current baseline (v0.0.3).
+- UDS: sequence-aware and negative-response-aware request generation controls implemented.
+- J1939: transport-protocol CM/DT multi-packet burst sequencing implemented.
+- CANopen: dictionary constraint usage implemented (access rights, limits, PDO mapping semantics).
 
 3. Observability and diagnostics
 - Add optional structured run summaries (JSON) with per-protocol counters
