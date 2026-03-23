@@ -148,8 +148,10 @@ Common flags:
 
 Compatibility notes:
 
-- `-F`, `-V`, `-I` are currently reserved/compatibility placeholders.
-- `rate_mode=1` is the active high-speed behavior; `rate_mode=0` is reserved for future explicit rate limiting.
+- `-F`, `-V`, `-I` are compatibility flags with reserved no-op runtime behavior. Values are validated as `0` or `1`.
+- `rate_mode=1` is high-speed behavior; `rate_mode=0` enables explicit timer-based pacing in the shared send loop.
+- Probability-style options (for example `--fd-prob`, `--invalid-sid-prob`, `--mutation-rate`) are validated in range `[0.0, 1.0]`.
+- Payload bounds are validated (`payload_min_len <= payload_max_len`, non-negative values).
 
 Protocol-specific targeting flags:
 
@@ -291,13 +293,14 @@ This roadmap is based on what is already implemented in the current codebase and
 - Replay capture and replay execution (`--save-replay`, `--replay`)
 - CANopen EDS/XDD/XDC dictionary parsing with dictionary-aware generation
 - Dry-send fallback when `python-can` backend is unavailable
+- Runtime validation for probability ranges and payload bounds with explicit error messages
+- `rate_mode=0` timer-based pacing in the engine loop (`rate_mode=1` unchanged for high-speed)
+- Defined compatibility behavior for `-F/-V/-I` as reserved no-op flags with validated values
 
 ### Next milestones (near term)
 
 1. Runtime controls and compatibility flags
-- Implement explicit rate limiting behavior for `rate_mode=0` (token/timer-based pacing)
-- Define and implement behavior for reserved compatibility flags (`-F`, `-V`, `-I`)
-- Add stronger validation and error messages for out-of-range probability values and payload bounds
+- Completed in current baseline; focus is now on profiling/tuning pacing policies and documenting operational guidance.
 
 2. Protocol depth improvements
 - UDS: extend negative-response and service-sequence awareness (session/security timing scenarios)

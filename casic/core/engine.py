@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from casic.core.transport import CanTransport
 
 class BaseFuzzer(ABC):
     protocol_name = "base"
+    RATE_MODE0_INTERVAL_SECONDS = 0.001
 
     def __init__(self, config: FuzzConfig):
         self.config = config
@@ -18,6 +20,7 @@ class BaseFuzzer(ABC):
         self.logger = PacketLogger()
         self.transport = CanTransport(interface=config.interface)
         self.stats = FuzzStats()
+        self._next_send_ts: float | None = None
 
     @abstractmethod
     def generate_frame(self, sequence_number: int) -> CANFrame:
@@ -35,20 +38,48 @@ class BaseFuzzer(ABC):
         self.logger.record_received(response)
         self.stats.received += 1
 
+    def _wait_for_send_slot(self):
+        if self.config.rate_mode != 0:
+            return
+
+        now = time.monotonic()
+        if self._next_send_ts is None:
+            self._next_send_ts = now
+
+        sleep_for = self._next_send_ts - now
+        if sleep_for > 0:
+            time.sleep(sleep_for)
+
+        next_slot = self._next_send_ts + self.RATE_MODE0_INTERVAL_SECONDS
+        self._next_send_ts = max(next_slot, time.monotonic())
+
     def run(self):
         try:
             if self.config.replay_file:
                 self.replay(self.config.replay_file)
                 return
 
+            if self.config.rate_mode == 0:
+                rate = int(1 / self.RATE_MODE0_INTERVAL_SECONDS)
+                print(f"[{self.protocol_name}] rate_mode=0 pacing active (~{rate} fps)")
+
+            if self.config.flag_f or self.config.flag_v or self.config.flag_i:
+                print(
+                    f"[{self.protocol_name}] compatibility flags active "
+                    f"(F={self.config.flag_f}, V={self.config.flag_v}, I={self.config.flag_i}); "
+                    "behavior is reserved/no-op"
+                )
+
             for i in range(1, self.config.packet_count + 1):
                 frame = self.generate_frame(i)
+                self._wait_for_send_slot()
                 self.transport.send(frame)
                 self.logger.record_sent(frame)
                 self.stats.sent += 1
 
                 burst_frames: list[CANFrame] = frame.meta.get("burst", [])
                 for burst in burst_frames:
+                    self._wait_for_send_slot()
                     self.transport.send(burst)
                     self.logger.record_sent(burst)
                     self.stats.sent += 1

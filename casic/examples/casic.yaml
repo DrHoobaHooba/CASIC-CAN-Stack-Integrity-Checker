@@ -3,7 +3,7 @@ global:
   # For full aggressive profile using all fuzzing knobs, use: casic/examples/casic-indepth.yaml.
   # CAN interface/backend selector. Example: pcan:PCAN_USBBUS1 or can0.
   interface: pcan:PCAN_USBBUS1
-  # Sending mode: 1 = max speed (current active behavior), 0 = reserved for future throttling mode.
+  # Sending mode: 1 = max speed, 0 = explicit timer-based pacing in the shared send loop.
   rate_mode: 1
   # Source addressing strategy. "rand" keeps fuzzing randomized where protocol permits.
   source_mode: rand
@@ -13,15 +13,15 @@ global:
   packet_count: 10000
   # Progress print frequency.
   print_interval: 1000
-  # ISIC compatibility reserved flag (currently parsed, not used).
+  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
   flag_f: 0
-  # ISIC compatibility reserved flag (currently parsed, not used).
+  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
   flag_v: 0
-  # ISIC compatibility reserved flag (currently parsed, not used).
+  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
   flag_i: 0
   # Deterministic random seed.
   seed: 42
-  # Per-mutation apply probability when mutation_chain is used.
+  # Per-mutation apply probability when mutation_chain is used (must be 0.0..1.0).
   mutation_rate: 0.7
 
 # Protocol blocks: enabled=false means section is skipped and all its parameters are ignored.

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from casic.cli.config_runner import run_from_yaml
 from casic.cli.yaml_config import parse_int
 
@@ -34,3 +36,23 @@ protocols:
     )
 
     run_from_yaml(cfg)
+
+
+def test_yaml_runner_rejects_invalid_probability_value(tmp_path: Path):
+    cfg = tmp_path / "invalid.yaml"
+    cfg.write_text(
+        """
+global:
+  interface: can0
+  packet_count: 1
+
+protocols:
+  cansic:
+    enabled: true
+    raw_fd_probability: 1.2
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="raw_fd_probability"):
+        run_from_yaml(cfg)

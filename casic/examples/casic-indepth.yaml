@@ -2,7 +2,7 @@
 global:
   # CAN interface/backend selector. Examples: "can0" (SocketCAN), "pcan:PCAN_USBBUS1" (PCAN).
   interface: pcan:PCAN_USBBUS1
-  # Sending mode: 1 = max speed (current behavior), 0 = reserved for future rate-limited mode.
+  # Sending mode: 1 = max speed, 0 = explicit timer-based pacing in the shared send loop.
   rate_mode: 1
   # Source addressing mode. "rand" means randomized source behavior where applicable.
   source_mode: rand
@@ -12,11 +12,11 @@ global:
   packet_count: 1000000
   # Print progress every N generated frames.
   print_interval: 5000
-  # ISIC-compatibility reserved flag (currently parsed but not used).
+  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
   flag_f: 0
-  # ISIC-compatibility reserved flag (currently parsed but not used).
+  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
   flag_v: 0
-  # ISIC-compatibility reserved flag (currently parsed but not used).
+  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
   flag_i: 0
   # RNG seed for reproducible fuzz runs.
   seed: 1337

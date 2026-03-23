@@ -5,6 +5,18 @@ from pathlib import Path
 from typing import Any
 
 
+def _validate_probability(name: str, value: float):
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{name} must be in range [0.0, 1.0], got {value}")
+
+
+def _validate_int_range(name: str, value: int | None, minimum: int, maximum: int):
+    if value is None:
+        return
+    if value < minimum or value > maximum:
+        raise ValueError(f"{name} must be in range [{minimum}, {maximum}], got {value}")
+
+
 @dataclass(slots=True)
 class CANFrame:
     can_id: int
@@ -55,6 +67,49 @@ class FuzzConfig:
     j1939_invalid_pgn_probability: float = 0.0
     canopen_invalid_sdo_probability: float = 0.0
     canopen_mode_bias: str | None = None
+
+    def __post_init__(self):
+        if self.rate_mode not in (0, 1):
+            raise ValueError(f"rate_mode must be 0 or 1, got {self.rate_mode}")
+
+        if self.packet_count <= 0:
+            raise ValueError(f"packet_count must be > 0, got {self.packet_count}")
+        if self.print_interval < 0:
+            raise ValueError(f"print_interval must be >= 0, got {self.print_interval}")
+
+        for name, value in (("flag_f", self.flag_f), ("flag_v", self.flag_v), ("flag_i", self.flag_i)):
+            if value not in (0, 1):
+                raise ValueError(f"{name} must be 0 or 1, got {value}")
+
+        if self.payload_min_len is not None and self.payload_min_len < 0:
+            raise ValueError(f"payload_min_len must be >= 0, got {self.payload_min_len}")
+        if self.payload_max_len is not None and self.payload_max_len < 0:
+            raise ValueError(f"payload_max_len must be >= 0, got {self.payload_max_len}")
+        if self.payload_min_len is not None and self.payload_max_len is not None:
+            if self.payload_min_len > self.payload_max_len:
+                raise ValueError(
+                    "payload_min_len must be <= payload_max_len, "
+                    f"got min={self.payload_min_len} max={self.payload_max_len}"
+                )
+
+        if self.uds_max_payload_len <= 0:
+            raise ValueError(f"uds_max_payload_len must be > 0, got {self.uds_max_payload_len}")
+
+        _validate_probability("mutation_rate", self.mutation_rate)
+        _validate_probability("raw_extended_id_probability", self.raw_extended_id_probability)
+        _validate_probability("raw_fd_probability", self.raw_fd_probability)
+        _validate_probability("raw_error_injection_probability", self.raw_error_injection_probability)
+        _validate_probability("uds_malformed_pci_probability", self.uds_malformed_pci_probability)
+        _validate_probability("uds_invalid_sid_probability", self.uds_invalid_sid_probability)
+        _validate_probability("j1939_tp_probability", self.j1939_tp_probability)
+        _validate_probability("j1939_invalid_pgn_probability", self.j1939_invalid_pgn_probability)
+        _validate_probability("canopen_invalid_sdo_probability", self.canopen_invalid_sdo_probability)
+
+        _validate_int_range("j1939_priority", self.j1939_priority, 0, 7)
+        _validate_int_range("j1939_sa", self.j1939_sa, 0, 0xFF)
+        _validate_int_range("j1939_da", self.j1939_da, 0, 0xFF)
+        _validate_int_range("j1939_pgn", self.j1939_pgn, 0, 0x3FFFF)
+        _validate_int_range("node_id", self.node_id, 1, 127)
 
 
 @dataclass(slots=True)
