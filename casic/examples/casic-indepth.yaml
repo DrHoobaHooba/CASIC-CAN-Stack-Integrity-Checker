@@ -43,7 +43,7 @@ protocols:
 
   udsic:
     # Enable/disable UDS fuzzing section.
-    enabled: false
+    enabled: true
     # UDS request arbitration ID (tester -> ECU).
     uds_request_id: 0x7E0
     # Expected UDS response arbitration ID filter (ECU -> tester).
@@ -63,7 +63,7 @@ protocols:
 
   j1939sic:
     # Enable/disable J1939 fuzzing section.
-    enabled: false
+    enabled: true
     # J1939 priority (0 highest .. 7 lowest).
     j1939_priority: 0
     # J1939 PGN base value for generation.
