@@ -280,6 +280,63 @@ Replay captured sequence:
 cosic -i can0 -r 1 -s rand -d 0x600 -p1 -m1000 -F0 -V0 -I0 --replay ./replay_cosic.jsonl
 ```
 
+## Development Roadmap
+
+This roadmap is based on what is already implemented in the current codebase and highlights the next engineering priorities.
+
+### Current baseline (v0.1.x)
+
+- Multi-protocol fuzzers available: Raw CAN (`cansic`), UDS (`udsic`), J1939 (`j1939sic`), CANopen (`cosic`)
+- Unified YAML runner (`casic --config`) with per-protocol enable/disable behavior
+- Replay capture and replay execution (`--save-replay`, `--replay`)
+- CANopen EDS/XDD/XDC dictionary parsing with dictionary-aware generation
+- Dry-send fallback when `python-can` backend is unavailable
+
+### Next milestones (near term)
+
+1. Runtime controls and compatibility flags
+- Implement explicit rate limiting behavior for `rate_mode=0` (token/timer-based pacing)
+- Define and implement behavior for reserved compatibility flags (`-F`, `-V`, `-I`)
+- Add stronger validation and error messages for out-of-range probability values and payload bounds
+
+2. Protocol depth improvements
+- UDS: extend negative-response and service-sequence awareness (session/security timing scenarios)
+- J1939: improve transport-protocol realism for multi-packet message sequencing
+- CANopen: increase dictionary constraint usage (access rights, limits, PDO mapping semantics)
+
+3. Observability and diagnostics
+- Add optional structured run summaries (JSON) with per-protocol counters
+- Expand replay metadata (run id, seed, profile info) for better reproducibility
+- Add a configurable response-correlation report for request/response fuzz sessions
+
+### Mid-term milestones
+
+1. Stability and quality
+- Expand test coverage around protocol edge cases and replay compatibility
+- Add CI matrix for Windows/Linux with and without optional CAN backend
+- Introduce compatibility tests for example configs and CLI aliases
+
+2. Configuration experience
+- Add YAML schema validation and clearer config-time diagnostics
+- Add reusable preset profiles for aggressive, balanced, and protocol-focused campaigns
+- Add a dry-run config validation mode to verify setup before transmitting frames
+
+### Longer-term goals
+
+1. Safety and control-plane features
+- Add optional guardrails (send budget, stop conditions, allow/deny ID ranges)
+- Add campaign checkpointing and resumable fuzz runs
+
+2. Integration and reporting
+- Export machine-readable artifacts for CI/security pipelines
+- Add protocol-specific post-run analysis helpers for triage and defect clustering
+
+### How contributors can align work
+
+- Prioritize changes that improve determinism (`--seed` + replay fidelity)
+- Include tests for every new CLI/config option
+- Keep protocol behavior isolated per fuzzer while preserving the shared engine interface
+
 ## Notes
 
 - If `python-can` is not installed or the interface is unavailable, CASIC runs in dry-send mode.
