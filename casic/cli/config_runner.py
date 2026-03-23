@@ -49,6 +49,10 @@ def _build_common(protocol_name: str, global_cfg: dict[str, Any], protocol_cfg: 
         raw_error_injection_probability=float(merged.get("raw_error_injection_probability", 0.0)),
         uds_malformed_pci_probability=float(merged.get("uds_malformed_pci_probability", 0.0)),
         uds_invalid_sid_probability=float(merged.get("uds_invalid_sid_probability", 0.0)),
+        uds_sequence_awareness_probability=float(merged.get("uds_sequence_awareness_probability", 0.6)),
+        uds_negative_response_awareness_probability=float(
+            merged.get("uds_negative_response_awareness_probability", 0.6)
+        ),
         uds_max_payload_len=int(merged.get("uds_max_payload_len", 50)),
         j1939_tp_probability=float(merged.get("j1939_tp_probability", 0.1)),
         j1939_invalid_pgn_probability=float(merged.get("j1939_invalid_pgn_probability", 0.0)),

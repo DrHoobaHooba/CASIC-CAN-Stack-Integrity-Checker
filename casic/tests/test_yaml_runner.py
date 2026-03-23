@@ -56,3 +56,23 @@ protocols:
 
     with pytest.raises(ValueError, match="raw_fd_probability"):
         run_from_yaml(cfg)
+
+
+def test_yaml_runner_rejects_invalid_uds_awareness_probability(tmp_path: Path):
+    cfg = tmp_path / "invalid_uds_prob.yaml"
+    cfg.write_text(
+        """
+global:
+  interface: can0
+  packet_count: 1
+
+protocols:
+  udsic:
+    enabled: true
+    uds_negative_response_awareness_probability: -0.1
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="uds_negative_response_awareness_probability"):
+        run_from_yaml(cfg)

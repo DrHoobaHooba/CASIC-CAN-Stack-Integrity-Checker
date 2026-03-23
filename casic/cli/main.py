@@ -52,6 +52,12 @@ def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
         raw_error_injection_probability=getattr(args, "raw_error_injection_probability", 0.0),
         uds_malformed_pci_probability=getattr(args, "uds_malformed_pci_probability", 0.0),
         uds_invalid_sid_probability=getattr(args, "uds_invalid_sid_probability", 0.0),
+        uds_sequence_awareness_probability=getattr(args, "uds_sequence_awareness_probability", 0.6),
+        uds_negative_response_awareness_probability=getattr(
+            args,
+            "uds_negative_response_awareness_probability",
+            0.6,
+        ),
         uds_max_payload_len=getattr(args, "uds_max_payload_len", 50),
         j1939_tp_probability=getattr(args, "j1939_tp_probability", 0.1),
         j1939_invalid_pgn_probability=getattr(args, "j1939_invalid_pgn_probability", 0.0),
@@ -88,6 +94,20 @@ def main_udsic(argv: list[str] | None = None):
     parser.add_argument("--resp-id", dest="uds_response_id", type=lambda x: int(x, 0), help="UDS expected response CAN-ID")
     parser.add_argument("--malformed-pci-prob", dest="uds_malformed_pci_probability", type=float, default=0.0)
     parser.add_argument("--invalid-sid-prob", dest="uds_invalid_sid_probability", type=float, default=0.0)
+    parser.add_argument(
+        "--sequence-awareness-prob",
+        dest="uds_sequence_awareness_probability",
+        type=float,
+        default=0.6,
+        help="Bias service selection toward stateful UDS sequences",
+    )
+    parser.add_argument(
+        "--negative-response-awareness-prob",
+        dest="uds_negative_response_awareness_probability",
+        type=float,
+        default=0.6,
+        help="Bias follow-up requests after NRC responses",
+    )
     parser.add_argument("--uds-max-payload", dest="uds_max_payload_len", type=int, default=50)
     args = parser.parse_args(argv)
     fuzzer = UDSFuzzer(_config_from_args(args))

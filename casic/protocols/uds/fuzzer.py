@@ -7,23 +7,124 @@ from casic.core.models import CANFrame
 class UDSFuzzer(BaseFuzzer):
     protocol_name = "uds"
 
+    def __init__(self, config):
+        super().__init__(config)
+        self._session_active = False
+        self._security_unlocked = False
+        self._pending_security_key_subfunction: int | None = None
+        self._last_negative_response: tuple[int, int] | None = None
+
+    def _extract_uds_payload(self, frame: CANFrame) -> bytes:
+        if not frame.data:
+            return b""
+        pci_type = (frame.data[0] >> 4) & 0x0F
+        if pci_type == 0:
+            payload_len = frame.data[0] & 0x0F
+            if payload_len <= 0:
+                return b""
+            return bytes(frame.data[1 : 1 + payload_len])
+        return bytes(frame.data[1:])
+
+    def _build_stateful_service(self) -> tuple[int, int, bytes]:
+        if self._pending_security_key_subfunction is not None:
+            subfunction = self._pending_security_key_subfunction
+            self._pending_security_key_subfunction = None
+            return (0x27, subfunction, self.rng.randbytes(4))
+
+        if not self._session_active:
+            return (0x10, self.rng.choice([0x01, 0x02, 0x03]), b"")
+
+        if not self._security_unlocked:
+            return (0x27, self.rng.choice([0x01, 0x03, 0x05]), b"")
+
+        return (self.rng.choice([0x22, 0x2E, 0x31, 0x34, 0x36]), self.rng.randint(0, 0xFF), b"")
+
+    def _build_negative_response_followup(self) -> tuple[int, int, bytes] | None:
+        if self._last_negative_response is None:
+            return None
+
+        request_sid, nrc = self._last_negative_response
+
+        if nrc == 0x78:
+            return (request_sid, self.rng.randint(0, 0xFF), b"")
+
+        if nrc in {0x33, 0x35, 0x36, 0x37}:
+            self._security_unlocked = False
+            self._pending_security_key_subfunction = None
+            return (0x27, self.rng.choice([0x01, 0x03, 0x05]), b"")
+
+        if nrc in {0x12, 0x31, 0x7E, 0x7F}:
+            return (0x10, self.rng.choice([0x01, 0x02, 0x03]), b"")
+
+        return None
+
     def should_accept_response(self, frame: CANFrame) -> bool:
         if self.config.uds_response_id is None:
             return True
         return frame.can_id == self.config.uds_response_id
+
+    def on_response(self, frame: CANFrame):
+        payload = self._extract_uds_payload(frame)
+        if not payload:
+            return
+
+        sid = payload[0]
+        if sid == 0x7F and len(payload) >= 3:
+            self._last_negative_response = (payload[1], payload[2])
+            if payload[2] in {0x33, 0x35, 0x36, 0x37}:
+                self._security_unlocked = False
+            return
+
+        if sid < 0x40:
+            return
+
+        request_sid = sid - 0x40
+        self._last_negative_response = None
+
+        if request_sid == 0x10:
+            self._session_active = True
+            return
+
+        if request_sid == 0x27 and len(payload) >= 2:
+            subfunction = payload[1]
+            if subfunction & 0x01:
+                if subfunction < 0x7F:
+                    self._pending_security_key_subfunction = subfunction + 1
+            else:
+                self._security_unlocked = True
+                self._pending_security_key_subfunction = None
 
     def generate_frame(self, sequence_number: int) -> CANFrame:
         if self.config.uds_request_id is not None:
             dst_id = self.config.uds_request_id
         else:
             dst_id = self.rng.can_id() if self.config.destination == "rand" else int(self.config.destination, 0)
-        if self.rng.random() < self.config.uds_invalid_sid_probability:
+
+        sid: int
+        subfunction: int
+        extra_payload = b""
+
+        if (
+            self.rng.random() < self.config.uds_negative_response_awareness_probability
+            and self._last_negative_response is not None
+        ):
+            followup = self._build_negative_response_followup()
+            if followup is not None:
+                sid, subfunction, extra_payload = followup
+            else:
+                sid = self.rng.uds_sid()
+                subfunction = self.rng.randint(0, 0xFF)
+        elif self.rng.random() < self.config.uds_sequence_awareness_probability:
+            sid, subfunction, extra_payload = self._build_stateful_service()
+        elif self.rng.random() < self.config.uds_invalid_sid_probability:
             sid = self.rng.choice([0x00, 0xFF, 0x7F])
+            subfunction = self.rng.randint(0, 0xFF)
         else:
             sid = self.rng.uds_sid()
-        subfunction = self.rng.randint(0, 0xFF)
+            subfunction = self.rng.randint(0, 0xFF)
+
         payload_len = self.rng.randint(0, max(0, self.config.uds_max_payload_len))
-        app_payload = bytes([sid, subfunction]) + self.rng.randbytes(payload_len)
+        app_payload = bytes([sid, subfunction]) + extra_payload + self.rng.randbytes(payload_len)
 
         if len(app_payload) <= 7:
             pci = bytes([len(app_payload)])

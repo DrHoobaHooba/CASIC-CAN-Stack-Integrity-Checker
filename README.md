@@ -162,7 +162,7 @@ Protocol-specific targeting flags:
 Advanced fuzzing flags:
 
 - `cansic`: `--mutation`, `--mutation-chain`, `--mutation-rate`, `--payload-min`, `--payload-max`, `--extended-prob`, `--fd-prob`, `--can-fd`, `--error-frame-prob`
-- `udsic`: `--malformed-pci-prob`, `--invalid-sid-prob`, `--uds-max-payload`
+- `udsic`: `--malformed-pci-prob`, `--invalid-sid-prob`, `--sequence-awareness-prob`, `--negative-response-awareness-prob`, `--uds-max-payload`
 - `j1939sic`: `--tp-prob`, `--invalid-pgn-prob`
 - `cosic`: `--invalid-sdo-prob`, `--mode-bias`
 
@@ -235,7 +235,7 @@ j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --priority 3 --pgn 0xFEF2 
 ```bash
 cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --mutation-chain bitflip,boundary,swap --mutation-rate 0.7 --payload-min 2 --payload-max 8 --extended-prob 0.1
 cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --mutation-chain bitflip,boundary,swap --mutation-rate 0.7 --payload-min 2 --payload-max 64 --can-fd --fd-prob 0.3
-udsic -i can0 -r 1 -s rand -d 0x7E0 -p200000 -m5000 --invalid-sid-prob 0.1 --malformed-pci-prob 0.2 --uds-max-payload 128
+udsic -i can0 -r 1 -s rand -d 0x7E0 -p200000 -m5000 --invalid-sid-prob 0.1 --malformed-pci-prob 0.2 --sequence-awareness-prob 0.8 --negative-response-awareness-prob 0.7 --uds-max-payload 128
 j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --tp-prob 0.2 --invalid-pgn-prob 0.1
 cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x61 --invalid-sdo-prob 0.15 --mode-bias sdo-heavy --eds ./casic/examples/node.eds
 ```
@@ -265,7 +265,7 @@ The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-
 - Raw CAN random IDs, extended-ID probability, explicit CAN-FD mode (`--can-fd`), CAN-FD probability (`--fd-prob`), and payload size ranges
 - Mutation operators: bitflip, nibbleflip, byteflip, boundary, truncate, expand, swap, arithmetic, structured
 - Mutation chaining and per-mutation application probability
-- UDS invalid SID, malformed ISO-TP PCI, variable payload range, and multi-frame fuzzing
+- UDS invalid SID, malformed ISO-TP PCI, variable payload range, multi-frame fuzzing, and sequence/NRC-aware service selection
 - J1939 PGN/priority/SA/DA fuzzing plus transport-protocol and invalid-PGN probabilities
 - CANopen dictionary-aware SDO/PDO/NMT/EMCY/SYNC/TIME generation with SDO corruption probability and mode bias
 

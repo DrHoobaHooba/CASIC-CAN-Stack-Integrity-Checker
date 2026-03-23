@@ -40,3 +40,8 @@ def test_cansic_rejects_out_of_range_probability():
 def test_cansic_rejects_invalid_payload_bounds():
     with pytest.raises(ValueError, match="payload_min_len must be <= payload_max_len"):
         main_cansic(["-i", "can0", "-p", "1", "--payload-min", "9", "--payload-max", "8"])
+
+
+def test_udsic_rejects_out_of_range_sequence_awareness_probability():
+    with pytest.raises(ValueError, match="uds_sequence_awareness_probability"):
+        main_udsic(["-i", "can0", "-p", "1", "--sequence-awareness-prob", "1.5"])

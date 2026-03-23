@@ -29,6 +29,9 @@ class BaseFuzzer(ABC):
     def should_accept_response(self, frame: CANFrame) -> bool:
         return True
 
+    def on_response(self, frame: CANFrame):
+        return
+
     def monitor_response(self):
         response = self.transport.recv(timeout=0.0)
         if response is None:
@@ -37,6 +40,7 @@ class BaseFuzzer(ABC):
             return
         self.logger.record_received(response)
         self.stats.received += 1
+        self.on_response(response)
 
     def _wait_for_send_slot(self):
         if self.config.rate_mode != 0:

@@ -59,6 +59,8 @@ class FuzzConfig:
     raw_error_injection_probability: float = 0.0
     uds_malformed_pci_probability: float = 0.0
     uds_invalid_sid_probability: float = 0.0
+    uds_sequence_awareness_probability: float = 0.6
+    uds_negative_response_awareness_probability: float = 0.6
     uds_max_payload_len: int = 50
     j1939_tp_probability: float = 0.1
     j1939_invalid_pgn_probability: float = 0.0
@@ -94,6 +96,11 @@ class FuzzConfig:
         _validate_probability("raw_error_injection_probability", self.raw_error_injection_probability)
         _validate_probability("uds_malformed_pci_probability", self.uds_malformed_pci_probability)
         _validate_probability("uds_invalid_sid_probability", self.uds_invalid_sid_probability)
+        _validate_probability("uds_sequence_awareness_probability", self.uds_sequence_awareness_probability)
+        _validate_probability(
+            "uds_negative_response_awareness_probability",
+            self.uds_negative_response_awareness_probability,
+        )
         _validate_probability("j1939_tp_probability", self.j1939_tp_probability)
         _validate_probability("j1939_invalid_pgn_probability", self.j1939_invalid_pgn_probability)
         _validate_probability("canopen_invalid_sdo_probability", self.canopen_invalid_sdo_probability)
