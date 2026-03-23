@@ -21,3 +21,4 @@ dist/
 # Runtime outputs
 replay/
 *.jsonl
+*.log

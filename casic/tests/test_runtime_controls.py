@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from casic.core.engine import BaseFuzzer
+from casic.core.logging import PacketLogger
 from casic.core.models import CANFrame, FuzzConfig
 
 
@@ -56,3 +57,27 @@ def test_rate_mode_1_has_no_wait(monkeypatch):
     fuzzer._wait_for_send_slot()
 
     assert called is False
+
+
+def test_run_id_is_deterministic_with_same_seed_and_config():
+    cfg_a = _build_config(rate_mode=1)
+    cfg_a.seed = 55
+    cfg_b = _build_config(rate_mode=1)
+    cfg_b.seed = 55
+
+    run_a = PacketLogger.deterministic_run_id("uds", cfg_a)
+    run_b = PacketLogger.deterministic_run_id("uds", cfg_b)
+
+    assert run_a == run_b
+
+
+def test_run_id_is_deterministic_without_seed():
+    cfg_a = _build_config(rate_mode=1)
+    cfg_a.seed = None
+    cfg_b = _build_config(rate_mode=1)
+    cfg_b.seed = None
+
+    run_a = PacketLogger.deterministic_run_id("j1939", cfg_a)
+    run_b = PacketLogger.deterministic_run_id("j1939", cfg_b)
+
+    assert run_a == run_b

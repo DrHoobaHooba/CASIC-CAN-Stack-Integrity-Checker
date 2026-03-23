@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from casic.cli.yaml_config import load_yaml, parse_int, parse_path
+from casic.core.logging import PacketLogger
 from casic.core.models import FuzzConfig
 from casic.core.parser import CANopenDictionaryParser
 from casic.protocols import CANopenFuzzer, J1939Fuzzer, RawCANFuzzer, UDSFuzzer
@@ -28,6 +29,14 @@ def _build_common(protocol_name: str, global_cfg: dict[str, Any], protocol_cfg: 
         seed=parse_int(merged.get("seed")),
         replay_file=parse_path(merged.get("replay_file")),
         save_replay_file=parse_path(merged.get("save_replay_file")),
+        summary_enabled=bool(merged.get("summary_enabled", False) or merged.get("summary_file")),
+        summary_file=parse_path(merged.get("summary_file")),
+        correlation_enabled=bool(
+            merged.get("correlation_enabled", False) or merged.get("correlation_report_file")
+        ),
+        correlation_report_file=parse_path(merged.get("correlation_report_file")),
+        correlation_window_seconds=float(merged.get("correlation_window_seconds", 2.0)),
+        profile_name=str(merged.get("profile_name")) if merged.get("profile_name") is not None else None,
         node_id=parse_int(merged.get("node_id")),
         sdo_rx_cobid=parse_int(merged.get("sdo_rx_cobid")),
         sdo_tx_cobid=parse_int(merged.get("sdo_tx_cobid")),
@@ -69,6 +78,9 @@ def run_from_yaml(config_path: str | Path):
         raise ValueError("YAML must contain 'global' and 'protocols' mappings")
 
     order = ["cansic", "udsic", "j1939sic", "cosic"]
+    summaries = []
+    summary_output_path: Path | None = None
+
     for name in order:
         section = protocols.get(name, {})
         if not isinstance(section, dict):
@@ -80,32 +92,58 @@ def run_from_yaml(config_path: str | Path):
             continue
 
         config = _build_common(name, global_cfg, section)
+        if config.summary_enabled and summary_output_path is None:
+            summary_output_path = config.summary_file or Path("casic_summary.json")
+        if config.summary_enabled and config.summary_file is None:
+            config.summary_file = summary_output_path
+        if config.correlation_enabled and config.correlation_report_file is None:
+            config.correlation_report_file = Path(f"{name}_correlation.csv")
+
         print(f"[casic] run {name} interface={config.interface} packets={config.packet_count}")
 
-        if name == "cansic":
-            can_fd = bool(section.get("can_fd", False))
-            mutation = str(section.get("mutation", "bitflip"))
-            RawCANFuzzer(config, can_fd=can_fd, mutation_mode=mutation).run()
-            continue
+        try:
+            if name == "cansic":
+                can_fd = bool(section.get("can_fd", False))
+                mutation = str(section.get("mutation", "bitflip"))
+                result = RawCANFuzzer(config, can_fd=can_fd, mutation_mode=mutation).run(write_summary=False)
+                if result is not None:
+                    summaries.append(result)
+                continue
 
-        if name == "udsic":
-            UDSFuzzer(config).run()
-            continue
+            if name == "udsic":
+                result = UDSFuzzer(config).run(write_summary=False)
+                if result is not None:
+                    summaries.append(result)
+                continue
 
-        if name == "j1939sic":
-            J1939Fuzzer(config).run()
-            continue
+            if name == "j1939sic":
+                result = J1939Fuzzer(config).run(write_summary=False)
+                if result is not None:
+                    summaries.append(result)
+                continue
 
-        if name == "cosic":
-            dictionary_path = section.get("eds") or section.get("xdd") or section.get("xdc")
-            dictionary = None
-            if dictionary_path:
-                dictionary = CANopenDictionaryParser().load(Path(str(dictionary_path)))
-                print(
-                    f"[casic] loaded CANopen dictionary entries={len(dictionary.entries)} "
-                    f"cob_ids={len(dictionary.cob_ids)}"
-                )
-            CANopenFuzzer(config, dictionary=dictionary).run()
+            if name == "cosic":
+                dictionary_path = section.get("eds") or section.get("xdd") or section.get("xdc")
+                dictionary = None
+                if dictionary_path:
+                    dictionary = CANopenDictionaryParser().load(Path(str(dictionary_path)))
+                    print(
+                        f"[casic] loaded CANopen dictionary entries={len(dictionary.entries)} "
+                        f"cob_ids={len(dictionary.cob_ids)}"
+                    )
+                result = CANopenFuzzer(config, dictionary=dictionary).run(write_summary=False)
+                if result is not None:
+                    summaries.append(result)
+        except Exception as e:
+            print(f"[casic] error in {name}: {type(e).__name__}: {e}")
+
+    print(f"[casic] completed all protocols. writing aggregate summary to {summary_output_path} with {len(summaries)} runs")
+    if summary_output_path is not None and summaries:
+        try:
+            PacketLogger.write_run_summary(Path(summary_output_path), summaries)
+            print(f"[casic] aggregate summary written successfully to {summary_output_path}")
+        except Exception as e:
+            print(f"[casic] error writing summary: {type(e).__name__}: {e}")
 
 
 def main(argv: list[str] | None = None):

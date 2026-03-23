@@ -38,6 +38,12 @@ class FuzzConfig:
     seed: int | None = None
     replay_file: Path | None = None
     save_replay_file: Path | None = None
+    summary_enabled: bool = False
+    summary_file: Path | None = None
+    correlation_enabled: bool = False
+    correlation_report_file: Path | None = None
+    correlation_window_seconds: float = 2.0
+    profile_name: str | None = None
     node_id: int | None = None
     sdo_rx_cobid: int | None = None
     sdo_tx_cobid: int | None = None
@@ -89,6 +95,11 @@ class FuzzConfig:
 
         if self.uds_max_payload_len <= 0:
             raise ValueError(f"uds_max_payload_len must be > 0, got {self.uds_max_payload_len}")
+        if self.correlation_window_seconds <= 0.0:
+            raise ValueError(
+                "correlation_window_seconds must be > 0.0, "
+                f"got {self.correlation_window_seconds}"
+            )
 
         _validate_probability("mutation_rate", self.mutation_rate)
         _validate_probability("raw_extended_id_probability", self.raw_extended_id_probability)
@@ -145,3 +156,34 @@ class ReplayRecord:
     protocol: str
     frame: CANFrame
     note: str = ""
+    run_id: str | None = None
+    seed: int | None = None
+    profile_name: str | None = None
+
+
+@dataclass(slots=True)
+class ProtocolRunSummary:
+    protocol: str
+    run_id: str
+    seed: int | None
+    profile_name: str | None
+    started_at: float
+    ended_at: float
+    duration_ms: float
+    sent: int
+    received: int
+    errors: int
+    burst_frames: int
+
+
+@dataclass(slots=True)
+class CorrelationRow:
+    protocol: str
+    run_id: str
+    request_timestamp: float | None
+    response_timestamp: float | None
+    match_status: str
+    latency_ms: float | None
+    correlation_key: str
+    request_context: dict[str, Any] = field(default_factory=dict)
+    response_context: dict[str, Any] = field(default_factory=dict)

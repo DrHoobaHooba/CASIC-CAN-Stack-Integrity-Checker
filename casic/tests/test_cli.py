@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -45,3 +46,43 @@ def test_cansic_rejects_invalid_payload_bounds():
 def test_udsic_rejects_out_of_range_sequence_awareness_probability():
     with pytest.raises(ValueError, match="uds_sequence_awareness_probability"):
         main_udsic(["-i", "can0", "-p", "1", "--sequence-awareness-prob", "1.5"])
+
+
+def test_cli_default_observability_outputs_are_disabled(tmp_path: Path):
+    summary_file = tmp_path / "summary.json"
+    correlation_file = tmp_path / "corr.csv"
+
+    main_cansic(["-i", "can0", "-p", "1", "-m", "0"])
+
+    assert not summary_file.exists()
+    assert not correlation_file.exists()
+
+
+def test_udsic_cli_generates_summary_and_correlation_when_enabled(tmp_path: Path):
+    summary_file = tmp_path / "uds_summary.json"
+    correlation_file = tmp_path / "uds_corr.csv"
+
+    main_udsic(
+        [
+            "-i",
+            "can0",
+            "-p",
+            "1",
+            "-m",
+            "0",
+            "--seed",
+            "11",
+            "--enable-summary",
+            "--summary-json",
+            str(summary_file),
+            "--enable-correlation",
+            "--correlation-csv",
+            str(correlation_file),
+        ]
+    )
+
+    summary = json.loads(summary_file.read_text(encoding="utf-8"))
+    assert summary["run_count"] == 1
+    assert summary["runs"][0]["protocol"] == "uds"
+    assert len(summary["runs"][0]["run_id"]) == 16
+    assert correlation_file.exists()

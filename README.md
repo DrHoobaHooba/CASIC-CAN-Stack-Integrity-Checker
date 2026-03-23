@@ -144,6 +144,12 @@ Common flags:
 - `-p <packet count>`
 - `-m <print interval>`
 - `--seed N`
+- `--enable-summary`
+- `--summary-json <path>`
+- `--enable-correlation`
+- `--correlation-csv <path>`
+- `--correlation-window-seconds <seconds>`
+- `--profile-name <name>`
 
 Runtime and validation notes:
 
@@ -165,6 +171,13 @@ Advanced fuzzing flags:
 - `udsic`: `--malformed-pci-prob`, `--invalid-sid-prob`, `--sequence-awareness-prob`, `--negative-response-awareness-prob`, `--uds-max-payload`
 - `j1939sic`: `--tp-prob`, `--invalid-pgn-prob`
 - `cosic`: `--invalid-sdo-prob`, `--mode-bias`
+
+Observability and diagnostics flags:
+
+- `--enable-summary` enables summary generation; `--summary-json` sets output path
+- `--enable-correlation` enables request/response correlation report generation; `--correlation-csv` sets output path
+- `--correlation-window-seconds` controls matching window (default: `2.0`)
+- `--profile-name` tags replay metadata for reproducibility workflows
 
 Targeting precedence:
 
@@ -222,6 +235,19 @@ casic --config ./casic/examples/casic-indepth.yaml
 ```
 
 `casic/examples/casic-indepth.yaml` enables all four protocol sections (`cansic`, `udsic`, `j1939sic`, `cosic`) and includes aggressive values for UDS sequence/NRC awareness and J1939 TP traffic probability.
+
+### Observability YAML keys
+
+The following keys are optional in both `global` and per-protocol sections:
+
+- `summary_enabled: true|false`
+- `summary_file: ./artifacts/run-summary.json`
+- `correlation_enabled: true|false`
+- `correlation_report_file: ./artifacts/uds-correlation.csv`
+- `correlation_window_seconds: 2.0`
+- `profile_name: campaign-a`
+
+Default behavior is unchanged unless these are explicitly enabled.
 
 ### Deterministic node/address targeting examples
 
@@ -285,11 +311,54 @@ Replay captured sequence:
 cosic -i can0 -r 1 -s rand -d 0x600 -p1 -m1000 --replay ./replay_cosic.jsonl
 ```
 
+Replay records are additive and backward compatible. New records include optional metadata fields:
+
+- `run_id` deterministic identifier derived from protocol plus canonicalized config
+- `seed` seed used for generation (or `null`)
+- `profile_name` optional campaign/profile label
+
+Older JSONL records without these fields remain readable.
+
+## Observability Outputs
+
+### Summary JSON
+
+Summary JSON is written only when enabled.
+
+- Single protocol CLI: one-run summary payload
+- YAML multi-protocol runner: one aggregate file written at run completion
+
+Required run fields include:
+
+- `protocol`, `run_id`, `seed`, `profile_name`
+- `started_at`, `ended_at`, `duration_ms`
+- `sent`, `received`, `errors`, `burst_frames`
+
+### Correlation CSV
+
+Correlation CSV is written only when enabled.
+
+- UDS key: service/request context
+- J1939 key: PGN plus addressing context
+
+Each detail row includes:
+
+- `request_timestamp`, `response_timestamp`, `match_status`, `latency_ms`
+- `correlation_key`, `request_context`, `response_context`
+
+The report appends summary metrics:
+
+- `match_rate_percent`
+- `unmatched_requests`
+- `latency_p50_ms`, `latency_p90_ms`, `latency_p95_ms`, `latency_p99_ms`
+
+For unsupported protocols (`cansic`, `cosic`), a metadata-only correlation artifact is emitted when correlation is enabled.
+
 ## Development Roadmap
 
 This roadmap is based on what is already implemented in the current codebase and highlights the next engineering priorities.
 
-### Current baseline (v0.0.3)
+### Current baseline (v0.0.4)
 
 - Multi-protocol fuzzers available: Raw CAN (`cansic`), UDS (`udsic`), J1939 (`j1939sic`), CANopen (`cosic`)
 - Unified YAML runner (`casic --config`) with per-protocol enable/disable behavior
@@ -302,22 +371,24 @@ This roadmap is based on what is already implemented in the current codebase and
 - Runtime validation for probability ranges and payload bounds with explicit error messages
 - `rate_mode=0` timer-based pacing in the engine loop (`rate_mode=1` unchanged for high-speed)
 - Legacy compatibility flags (`-F/-V/-I`) removed to keep CASIC CLI protocol-specific and explicit
+- **Deterministic run IDs** based on protocol + canonicalized config hash
+- **Run summary JSON** generation with per-protocol counters and durations
+- **Replay metadata enrichment** with run_id, seed, profile_name (backward compatible)
+- **Request/response correlation CSV** reporting with latency percentiles (UDS and J1939)
+- **Fixed** aggregate summary generation in YAML multi-protocol orchestration
 
 ### Next milestones (near term)
 
-1. Runtime controls and validation
-- Completed in current baseline; focus is now on profiling/tuning pacing policies and documenting operational guidance.
+1. Stability and quality
+- Expand test coverage around protocol edge cases and replay compatibility
+- Add CI matrix for Windows/Linux with and without optional CAN backend
+- Introduce regression tests for example configs and CLI aliases
+- Add integration tests for YAML multi-protocol orchestration
 
-2. Protocol depth improvements
-- Completed in current baseline (v0.0.3).
-- UDS: sequence-aware and negative-response-aware request generation controls implemented.
-- J1939: transport-protocol CM/DT multi-packet burst sequencing implemented.
-- CANopen: dictionary constraint usage implemented (access rights, limits, PDO mapping semantics).
-
-3. Observability and diagnostics
-- Add optional structured run summaries (JSON) with per-protocol counters
-- Expand replay metadata (run id, seed, profile info) for better reproducibility
-- Add a configurable response-correlation report for request/response fuzz sessions
+2. Configuration experience
+- Add YAML schema validation and clearer config-time diagnostics
+- Add reusable preset profiles for aggressive, balanced, and protocol-focused campaigns
+- Add a dry-run config validation mode to verify setup before transmitting frames
 
 ### Mid-term milestones
 

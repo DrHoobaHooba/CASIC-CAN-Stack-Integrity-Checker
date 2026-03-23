@@ -18,6 +18,24 @@ def _add_common_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--seed", dest="seed", type=int, default=None)
     parser.add_argument("--replay", dest="replay_file", type=Path, default=None)
     parser.add_argument("--save-replay", dest="save_replay_file", type=Path, default=None)
+    parser.add_argument("--enable-summary", action="store_true", help="Enable JSON run summary output")
+    parser.add_argument("--summary-json", dest="summary_file", type=Path, default=None, help="Summary JSON output path")
+    parser.add_argument("--enable-correlation", action="store_true", help="Enable request-response correlation CSV")
+    parser.add_argument(
+        "--correlation-csv",
+        dest="correlation_report_file",
+        type=Path,
+        default=None,
+        help="Correlation CSV output path",
+    )
+    parser.add_argument(
+        "--correlation-window-seconds",
+        dest="correlation_window_seconds",
+        type=float,
+        default=2.0,
+        help="Request-response correlation window in seconds",
+    )
+    parser.add_argument("--profile-name", dest="profile_name", default=None, help="Optional profile tag for replay metadata")
 
 
 def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
@@ -31,6 +49,15 @@ def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
         seed=args.seed,
         replay_file=args.replay_file,
         save_replay_file=args.save_replay_file,
+        summary_enabled=bool(getattr(args, "enable_summary", False) or getattr(args, "summary_file", None)),
+        summary_file=getattr(args, "summary_file", None),
+        correlation_enabled=bool(
+            getattr(args, "enable_correlation", False)
+            or getattr(args, "correlation_report_file", None)
+        ),
+        correlation_report_file=getattr(args, "correlation_report_file", None),
+        correlation_window_seconds=getattr(args, "correlation_window_seconds", 2.0),
+        profile_name=getattr(args, "profile_name", None),
         node_id=getattr(args, "node_id", None),
         sdo_rx_cobid=getattr(args, "sdo_rx_cobid", None),
         sdo_tx_cobid=getattr(args, "sdo_tx_cobid", None),
@@ -66,6 +93,13 @@ def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
     )
 
 
+def _ensure_observability_paths(config: FuzzConfig, protocol_name: str):
+    if config.summary_enabled and config.summary_file is None:
+        config.summary_file = Path(f"{protocol_name}_summary.json")
+    if config.correlation_enabled and config.correlation_report_file is None:
+        config.correlation_report_file = Path(f"{protocol_name}_correlation.csv")
+
+
 def main_cansic(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(prog="cansic")
     _add_common_arguments(parser)
@@ -83,7 +117,9 @@ def main_cansic(argv: list[str] | None = None):
     parser.add_argument("--fd-prob", dest="raw_fd_probability", type=float, default=0.0)
     parser.add_argument("--error-frame-prob", dest="raw_error_injection_probability", type=float, default=0.0)
     args = parser.parse_args(argv)
-    fuzzer = RawCANFuzzer(_config_from_args(args), can_fd=args.can_fd, mutation_mode=args.mutation)
+    config = _config_from_args(args)
+    _ensure_observability_paths(config, "cansic")
+    fuzzer = RawCANFuzzer(config, can_fd=args.can_fd, mutation_mode=args.mutation)
     fuzzer.run()
 
 
@@ -110,7 +146,9 @@ def main_udsic(argv: list[str] | None = None):
     )
     parser.add_argument("--uds-max-payload", dest="uds_max_payload_len", type=int, default=50)
     args = parser.parse_args(argv)
-    fuzzer = UDSFuzzer(_config_from_args(args))
+    config = _config_from_args(args)
+    _ensure_observability_paths(config, "udsic")
+    fuzzer = UDSFuzzer(config)
     fuzzer.run()
 
 
@@ -124,7 +162,9 @@ def main_j1939sic(argv: list[str] | None = None):
     parser.add_argument("--tp-prob", dest="j1939_tp_probability", type=float, default=0.1)
     parser.add_argument("--invalid-pgn-prob", dest="j1939_invalid_pgn_probability", type=float, default=0.0)
     args = parser.parse_args(argv)
-    fuzzer = J1939Fuzzer(_config_from_args(args))
+    config = _config_from_args(args)
+    _ensure_observability_paths(config, "j1939sic")
+    fuzzer = J1939Fuzzer(config)
     fuzzer.run()
 
 
@@ -158,5 +198,7 @@ def main_cosic(argv: list[str] | None = None):
             f"cob_ids={len(dictionary.cob_ids)}"
         )
 
-    fuzzer = CANopenFuzzer(_config_from_args(args), dictionary=dictionary)
+    config = _config_from_args(args)
+    _ensure_observability_paths(config, "cosic")
+    fuzzer = CANopenFuzzer(config, dictionary=dictionary)
     fuzzer.run()

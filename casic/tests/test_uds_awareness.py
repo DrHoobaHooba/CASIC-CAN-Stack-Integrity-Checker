@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from casic.core.logging import PacketLogger
 from casic.core.models import CANFrame, FuzzConfig
 from casic.protocols.uds import UDSFuzzer
 
@@ -61,3 +64,22 @@ def test_security_seed_response_triggers_key_followup_subfunction():
     assert payload
     assert payload[0] == 0x27
     assert payload[1] == 0x02
+
+
+def test_uds_correlation_uses_service_context_and_writes_summary_metrics(tmp_path: Path):
+    logger = PacketLogger()
+    logger.record_sent(CANFrame(can_id=0x7E0, data=bytes([0x02, 0x10, 0x01, 0, 0, 0, 0, 0]), timestamp=10.0))
+    logger.record_received(CANFrame(can_id=0x7E8, data=bytes([0x02, 0x50, 0x01, 0, 0, 0, 0, 0]), timestamp=10.02))
+
+    rows = logger.build_correlation_rows(protocol="uds", run_id="run123", window_seconds=1.0)
+
+    assert len(rows) == 1
+    assert rows[0].match_status == "matched"
+    assert rows[0].correlation_key.startswith("service:16")
+    assert rows[0].latency_ms == 20.0
+
+    report = tmp_path / "uds_corr.csv"
+    PacketLogger.write_correlation_csv(path=report, protocol="uds", run_id="run123", rows=rows)
+    text = report.read_text(encoding="utf-8")
+    assert "match_rate_percent" in text
+    assert "latency_p50_ms" in text

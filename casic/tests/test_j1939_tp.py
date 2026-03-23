@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from casic.core.logging import PacketLogger
 from casic.core.models import CANFrame, FuzzConfig
 from casic.protocols.j1939 import J1939Fuzzer
 
@@ -54,3 +57,36 @@ def test_j1939_global_destination_uses_bam_cm_control():
     frame = fuzzer.generate_frame(1)
 
     assert frame.data[0] == 0x20
+
+
+def test_j1939_correlation_uses_pgn_and_address_context(tmp_path: Path):
+    logger = PacketLogger()
+    request_id = (3 << 26) | (0xEA << 16) | (0xFE << 8) | 0x80
+    response_id = (3 << 26) | (0xEA << 16) | (0xFE << 8) | 0x80
+    logger.record_sent(CANFrame(can_id=request_id, data=b"\x00" * 8, is_extended_id=True, timestamp=1.0))
+    logger.record_received(CANFrame(can_id=response_id, data=b"\x01" * 8, is_extended_id=True, timestamp=1.01))
+
+    rows = logger.build_correlation_rows(protocol="j1939", run_id="runj", window_seconds=1.0)
+
+    assert len(rows) == 1
+    assert rows[0].match_status == "matched"
+    assert rows[0].correlation_key == "pgn:59904|sa:128|da:254"
+    assert rows[0].latency_ms == 10.0
+
+    report = tmp_path / "j1939_corr.csv"
+    PacketLogger.write_correlation_csv(path=report, protocol="j1939", run_id="runj", rows=rows)
+    assert "unmatched_requests" in report.read_text(encoding="utf-8")
+
+
+def test_metadata_only_correlation_report_for_unsupported_protocol(tmp_path: Path):
+    report = tmp_path / "unsupported.csv"
+    PacketLogger.write_correlation_csv(
+        path=report,
+        protocol="cosic",
+        run_id="runx",
+        rows=[],
+        unsupported_reason="Protocol does not support request-response correlation",
+    )
+    text = report.read_text(encoding="utf-8")
+    assert "unsupported_reason" in text
+    assert "Protocol does not support request-response correlation" in text

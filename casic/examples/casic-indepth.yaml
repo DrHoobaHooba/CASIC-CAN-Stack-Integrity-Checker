@@ -16,6 +16,12 @@ global:
   seed: 1337
   # Probability (0..1) that each mutation in a mutation_chain is applied.
   mutation_rate: 0.95
+  # Optional run summary output (aggregate for YAML runs).
+  summary_enabled: true
+  # Path for summary JSON when summary_enabled=true.
+  summary_file: ./replay/casic_indepth_summary.json
+  # Optional profile label added to replay metadata.
+  profile_name: indepth
 
 # Per-protocol sections. Set enabled=false to skip that protocol entirely.
 protocols:
@@ -43,7 +49,7 @@ protocols:
 
   udsic:
     # Enable/disable UDS fuzzing section.
-    enabled: true
+    enabled: false
     # UDS request arbitration ID (tester -> ECU).
     uds_request_id: 0x7E0
     # Expected UDS response arbitration ID filter (ECU -> tester).
@@ -58,12 +64,18 @@ protocols:
     uds_negative_response_awareness_probability: 0.9
     # Maximum application payload length before ISO-TP segmentation.
     uds_max_payload_len: 512
+    # Optional request-response correlation report.
+    correlation_enabled: true
+    # Output CSV path for UDS correlation report.
+    correlation_report_file: ./replay/udsic_indepth_correlation.csv
+    # Request-response match window in seconds.
+    correlation_window_seconds: 2.0
     # Output file for replay capture of sent UDS frames.
     save_replay_file: ./replay/udsic_indepth.jsonl
 
   j1939sic:
     # Enable/disable J1939 fuzzing section.
-    enabled: true
+    enabled: false
     # J1939 priority (0 highest .. 7 lowest).
     j1939_priority: 0
     # J1939 PGN base value for generation.
@@ -76,6 +88,12 @@ protocols:
     j1939_tp_probability: 0.8
     # Probability (0..1) to use boundary/invalid-ish PGN variants.
     j1939_invalid_pgn_probability: 0.6
+    # Optional request-response correlation report.
+    correlation_enabled: true
+    # Output CSV path for J1939 correlation report.
+    correlation_report_file: ./replay/j1939sic_indepth_correlation.csv
+    # Request-response match window in seconds.
+    correlation_window_seconds: 2.0
     # Output file for replay capture of sent J1939 frames.
     save_replay_file: ./replay/j1939sic_indepth.jsonl
 
