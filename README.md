@@ -284,7 +284,7 @@ cosic -i can0 -r 1 -s rand -d 0x600 -p1 -m1000 --replay ./replay_cosic.jsonl
 
 This roadmap is based on what is already implemented in the current codebase and highlights the next engineering priorities.
 
-### Current baseline (v0.1.x)
+### Current baseline (v0.0.2)
 
 - Multi-protocol fuzzers available: Raw CAN (`cansic`), UDS (`udsic`), J1939 (`j1939sic`), CANopen (`cosic`)
 - Unified YAML runner (`casic --config`) with per-protocol enable/disable behavior
