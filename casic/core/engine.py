@@ -63,13 +63,6 @@ class BaseFuzzer(ABC):
                 rate = int(1 / self.RATE_MODE0_INTERVAL_SECONDS)
                 print(f"[{self.protocol_name}] rate_mode=0 pacing active (~{rate} fps)")
 
-            if self.config.flag_f or self.config.flag_v or self.config.flag_i:
-                print(
-                    f"[{self.protocol_name}] compatibility flags active "
-                    f"(F={self.config.flag_f}, V={self.config.flag_v}, I={self.config.flag_i}); "
-                    "behavior is reserved/no-op"
-                )
-
             for i in range(1, self.config.packet_count + 1):
                 frame = self.generate_frame(i)
                 self._wait_for_send_slot()

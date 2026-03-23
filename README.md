@@ -143,12 +143,10 @@ Common flags:
 - `-d <destination>`
 - `-p <packet count>`
 - `-m <print interval>`
-- `-F0 -V0 -I0`
 - `--seed N`
 
-Compatibility notes:
+Runtime and validation notes:
 
-- `-F`, `-V`, `-I` are compatibility flags with reserved no-op runtime behavior. Values are validated as `0` or `1`.
 - `rate_mode=1` is high-speed behavior; `rate_mode=0` enables explicit timer-based pacing in the shared send loop.
 - Probability-style options (for example `--fd-prob`, `--invalid-sid-prob`, `--mutation-rate`) are validated in range `[0.0, 1.0]`.
 - Payload bounds are validated (`payload_min_len <= payload_max_len`, non-negative values).
@@ -181,10 +179,10 @@ Notes:
 ### Examples
 
 ```bash
-cansic   -i can0 -r 1 -s rand -d rand       -p1000000 -m5000 -F0 -V0 -I0 --seed 42
-udsic    -i can0 -r 1 -s rand -d 0x7E0      -p1000000 -m10000 -F0 -V0 -I0
-j1939sic -i can0 -r 1 -s rand -d 0x18FF50E5 -p10000000 -m5000 -F0 -V0 -I0
-cosic    -i can0 -r 1 -s rand -d 0x600      -p1000000 -m5000 -F0 -V0 -I0 --eds ./casic/examples/node.eds
+cansic   -i can0 -r 1 -s rand -d rand       -p1000000 -m5000 --seed 42
+udsic    -i can0 -r 1 -s rand -d 0x7E0      -p1000000 -m10000
+j1939sic -i can0 -r 1 -s rand -d 0x18FF50E5 -p10000000 -m5000
+cosic    -i can0 -r 1 -s rand -d 0x600      -p1000000 -m5000 --eds ./casic/examples/node.eds
 ```
 
 ### YAML configuration example
@@ -224,27 +222,27 @@ casic --config ./casic/examples/casic-indepth.yaml
 ### Deterministic node/address targeting examples
 
 ```bash
-cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 -F0 -V0 -I0 --node-id 0x05 --eds ./casic/examples/node.eds
-cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 -F0 -V0 -I0 --sdo-rx 0x605 --tpdo1 0x185 --eds ./casic/examples/node.eds
-udsic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 -F0 -V0 -I0 --req-id 0x7E0 --resp-id 0x7E8
-j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 -F0 -V0 -I0 --priority 3 --pgn 0xFEF2 --sa 0x80 --da 0xFE
+cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x05 --eds ./casic/examples/node.eds
+cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --sdo-rx 0x605 --tpdo1 0x185 --eds ./casic/examples/node.eds
+udsic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --req-id 0x7E0 --resp-id 0x7E8
+j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --priority 3 --pgn 0xFEF2 --sa 0x80 --da 0xFE
 ```
 
 ### Advanced mutation/fuzzing examples
 
 ```bash
-cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 -F0 -V0 -I0 --mutation-chain bitflip,boundary,swap --mutation-rate 0.7 --payload-min 2 --payload-max 8 --extended-prob 0.1
-udsic -i can0 -r 1 -s rand -d 0x7E0 -p200000 -m5000 -F0 -V0 -I0 --invalid-sid-prob 0.1 --malformed-pci-prob 0.2 --uds-max-payload 128
-j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 -F0 -V0 -I0 --tp-prob 0.2 --invalid-pgn-prob 0.1
-cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 -F0 -V0 -I0 --node-id 0x61 --invalid-sdo-prob 0.15 --mode-bias sdo-heavy --eds ./casic/examples/node.eds
+cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --mutation-chain bitflip,boundary,swap --mutation-rate 0.7 --payload-min 2 --payload-max 8 --extended-prob 0.1
+udsic -i can0 -r 1 -s rand -d 0x7E0 -p200000 -m5000 --invalid-sid-prob 0.1 --malformed-pci-prob 0.2 --uds-max-payload 128
+j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --tp-prob 0.2 --invalid-pgn-prob 0.1
+cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x61 --invalid-sdo-prob 0.15 --mode-bias sdo-heavy --eds ./casic/examples/node.eds
 ```
 
 ### PCAN (Windows) examples
 
 ```bash
-cansic -i pcan:PCAN_USBBUS1 -r 1 -s rand -d rand -p100000 -m5000 -F0 -V0 -I0
-udsic  -i pcan:PCAN_USBBUS1 -r 1 -s rand -d 0x7E0 -p500000 -m10000 -F0 -V0 -I0
-cosic  -i pcan:PCAN_USBBUS1 -r 1 -s rand -d 0x600 -p500000 -m5000 -F0 -V0 -I0 --eds ./casic/examples/node.eds
+cansic -i pcan:PCAN_USBBUS1 -r 1 -s rand -d rand -p100000 -m5000
+udsic  -i pcan:PCAN_USBBUS1 -r 1 -s rand -d 0x7E0 -p500000 -m10000
+cosic  -i pcan:PCAN_USBBUS1 -r 1 -s rand -d 0x600 -p500000 -m5000 --eds ./casic/examples/node.eds
 ```
 
 You can also pass `-i PCAN_USBBUS1` directly on Windows; CASIC auto-selects the `pcan` backend.
@@ -273,13 +271,13 @@ The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-
 Capture sent sequences:
 
 ```bash
-cosic -i can0 -r 1 -s rand -d 0x600 -p5000 -m1000 -F0 -V0 -I0 --eds ./casic/examples/node.eds --save-replay ./replay_cosic.jsonl
+cosic -i can0 -r 1 -s rand -d 0x600 -p5000 -m1000 --eds ./casic/examples/node.eds --save-replay ./replay_cosic.jsonl
 ```
 
 Replay captured sequence:
 
 ```bash
-cosic -i can0 -r 1 -s rand -d 0x600 -p1 -m1000 -F0 -V0 -I0 --replay ./replay_cosic.jsonl
+cosic -i can0 -r 1 -s rand -d 0x600 -p1 -m1000 --replay ./replay_cosic.jsonl
 ```
 
 ## Development Roadmap
@@ -295,11 +293,11 @@ This roadmap is based on what is already implemented in the current codebase and
 - Dry-send fallback when `python-can` backend is unavailable
 - Runtime validation for probability ranges and payload bounds with explicit error messages
 - `rate_mode=0` timer-based pacing in the engine loop (`rate_mode=1` unchanged for high-speed)
-- Defined compatibility behavior for `-F/-V/-I` as reserved no-op flags with validated values
+- Legacy compatibility flags (`-F/-V/-I`) removed to keep CASIC CLI protocol-specific and explicit
 
 ### Next milestones (near term)
 
-1. Runtime controls and compatibility flags
+1. Runtime controls and validation
 - Completed in current baseline; focus is now on profiling/tuning pacing policies and documenting operational guidance.
 
 2. Protocol depth improvements
@@ -317,7 +315,7 @@ This roadmap is based on what is already implemented in the current codebase and
 1. Stability and quality
 - Expand test coverage around protocol edge cases and replay compatibility
 - Add CI matrix for Windows/Linux with and without optional CAN backend
-- Introduce compatibility tests for example configs and CLI aliases
+- Introduce regression tests for example configs and CLI aliases
 
 2. Configuration experience
 - Add YAML schema validation and clearer config-time diagnostics

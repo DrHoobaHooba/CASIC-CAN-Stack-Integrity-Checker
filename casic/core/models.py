@@ -35,9 +35,6 @@ class FuzzConfig:
     destination: str
     packet_count: int
     print_interval: int
-    flag_f: int
-    flag_v: int
-    flag_i: int
     seed: int | None = None
     replay_file: Path | None = None
     save_replay_file: Path | None = None
@@ -76,10 +73,6 @@ class FuzzConfig:
             raise ValueError(f"packet_count must be > 0, got {self.packet_count}")
         if self.print_interval < 0:
             raise ValueError(f"print_interval must be >= 0, got {self.print_interval}")
-
-        for name, value in (("flag_f", self.flag_f), ("flag_v", self.flag_v), ("flag_i", self.flag_i)):
-            if value not in (0, 1):
-                raise ValueError(f"{name} must be 0 or 1, got {value}")
 
         if self.payload_min_len is not None and self.payload_min_len < 0:
             raise ValueError(f"payload_min_len must be >= 0, got {self.payload_min_len}")

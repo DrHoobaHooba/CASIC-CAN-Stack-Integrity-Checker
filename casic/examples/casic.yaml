@@ -13,12 +13,6 @@ global:
   packet_count: 10000
   # Progress print frequency.
   print_interval: 1000
-  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
-  flag_f: 0
-  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
-  flag_v: 0
-  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
-  flag_i: 0
   # Deterministic random seed.
   seed: 42
   # Per-mutation apply probability when mutation_chain is used (must be 0.0..1.0).

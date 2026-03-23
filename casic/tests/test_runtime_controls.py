@@ -21,9 +21,6 @@ def _build_config(rate_mode: int = 0) -> FuzzConfig:
         destination="rand",
         packet_count=1,
         print_interval=0,
-        flag_f=0,
-        flag_v=0,
-        flag_i=0,
     )
 
 

@@ -12,12 +12,6 @@ global:
   packet_count: 1000000
   # Print progress every N generated frames.
   print_interval: 5000
-  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
-  flag_f: 0
-  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
-  flag_v: 0
-  # ISIC compatibility flag (reserved no-op behavior). Value must be 0 or 1.
-  flag_i: 0
   # RNG seed for reproducible fuzz runs.
   seed: 1337
   # Probability (0..1) that each mutation in a mutation_chain is applied.

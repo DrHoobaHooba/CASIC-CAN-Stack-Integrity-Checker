@@ -15,9 +15,6 @@ def _add_common_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("-d", dest="destination", default="rand", help="destination CAN-ID / address")
     parser.add_argument("-p", dest="packet_count", type=int, default=1000000, help="packet count")
     parser.add_argument("-m", dest="print_interval", type=int, default=5000, help="print interval")
-    parser.add_argument("-F", dest="flag_f", type=int, default=0)
-    parser.add_argument("-V", dest="flag_v", type=int, default=0)
-    parser.add_argument("-I", dest="flag_i", type=int, default=0)
     parser.add_argument("--seed", dest="seed", type=int, default=None)
     parser.add_argument("--replay", dest="replay_file", type=Path, default=None)
     parser.add_argument("--save-replay", dest="save_replay_file", type=Path, default=None)
@@ -31,9 +28,6 @@ def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
         destination=args.destination,
         packet_count=args.packet_count,
         print_interval=args.print_interval,
-        flag_f=args.flag_f,
-        flag_v=args.flag_v,
-        flag_i=args.flag_i,
         seed=args.seed,
         replay_file=args.replay_file,
         save_replay_file=args.save_replay_file,
