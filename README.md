@@ -266,7 +266,7 @@ The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-
 - Mutation operators: bitflip, nibbleflip, byteflip, boundary, truncate, expand, swap, arithmetic, structured
 - Mutation chaining and per-mutation application probability
 - UDS invalid SID, malformed ISO-TP PCI, variable payload range, multi-frame fuzzing, and sequence/NRC-aware service selection
-- J1939 PGN/priority/SA/DA fuzzing plus transport-protocol and invalid-PGN probabilities
+- J1939 PGN/priority/SA/DA fuzzing plus transport-protocol CM/DT burst sequencing and invalid-PGN probabilities
 - CANopen dictionary-aware SDO/PDO/NMT/EMCY/SYNC/TIME generation with SDO corruption probability and mode bias
 
 ## Replay Support

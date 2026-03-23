@@ -52,6 +52,10 @@ protocols:
     uds_invalid_sid_probability: 0.7
     # Probability (0..1) to corrupt ISO-TP PCI bytes.
     uds_malformed_pci_probability: 0.75
+    # Probability (0..1) to prefer stateful UDS service progression.
+    uds_sequence_awareness_probability: 0.9
+    # Probability (0..1) to adapt requests after negative responses (NRC-aware).
+    uds_negative_response_awareness_probability: 0.9
     # Maximum application payload length before ISO-TP segmentation.
     uds_max_payload_len: 512
     # Output file for replay capture of sent UDS frames.
