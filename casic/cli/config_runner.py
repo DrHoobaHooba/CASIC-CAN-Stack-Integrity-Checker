@@ -62,10 +62,18 @@ def _build_common(protocol_name: str, global_cfg: dict[str, Any], protocol_cfg: 
         uds_negative_response_awareness_probability=float(
             merged.get("uds_negative_response_awareness_probability", 0.6)
         ),
+        uds_adaptive_sequence_probability=float(merged.get("uds_adaptive_sequence_probability", 0.0)),
+        uds_nrc_backoff_probability=float(merged.get("uds_nrc_backoff_probability", 0.0)),
         uds_max_payload_len=int(merged.get("uds_max_payload_len", 50)),
         j1939_tp_probability=float(merged.get("j1939_tp_probability", 0.1)),
         j1939_invalid_pgn_probability=float(merged.get("j1939_invalid_pgn_probability", 0.0)),
+        j1939_tp_sequence_anomaly_probability=float(
+            merged.get("j1939_tp_sequence_anomaly_probability", 0.0)
+        ),
+        j1939_tp_timing_fault_probability=float(merged.get("j1939_tp_timing_fault_probability", 0.0)),
         canopen_invalid_sdo_probability=float(merged.get("canopen_invalid_sdo_probability", 0.0)),
+        canopen_abort_aware_probability=float(merged.get("canopen_abort_aware_probability", 0.0)),
+        canopen_abort_blacklist_window=int(merged.get("canopen_abort_blacklist_window", 5)),
         canopen_mode_bias=str(merged.get("canopen_mode_bias")) if merged.get("canopen_mode_bias") is not None else None,
     )
 

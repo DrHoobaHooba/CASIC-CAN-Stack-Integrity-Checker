@@ -109,7 +109,7 @@ class BaseFuzzer(ABC):
                     self.stats.sent += 1
                     self._burst_frames_sent += 1
 
-                if self.protocol_name in {"uds", "j1939"}:
+                if self.protocol_name in {"uds", "j1939", "cosic"}:
                     self.monitor_response()
 
                 if self.config.print_interval > 0 and i % self.config.print_interval == 0:

@@ -67,10 +67,16 @@ class FuzzConfig:
     uds_invalid_sid_probability: float = 0.0
     uds_sequence_awareness_probability: float = 0.6
     uds_negative_response_awareness_probability: float = 0.6
+    uds_adaptive_sequence_probability: float = 0.0
+    uds_nrc_backoff_probability: float = 0.0
     uds_max_payload_len: int = 50
     j1939_tp_probability: float = 0.1
     j1939_invalid_pgn_probability: float = 0.0
+    j1939_tp_sequence_anomaly_probability: float = 0.0
+    j1939_tp_timing_fault_probability: float = 0.0
     canopen_invalid_sdo_probability: float = 0.0
+    canopen_abort_aware_probability: float = 0.0
+    canopen_abort_blacklist_window: int = 5
     canopen_mode_bias: str | None = None
 
     def __post_init__(self):
@@ -100,6 +106,11 @@ class FuzzConfig:
                 "correlation_window_seconds must be > 0.0, "
                 f"got {self.correlation_window_seconds}"
             )
+        if self.canopen_abort_blacklist_window <= 0:
+            raise ValueError(
+                "canopen_abort_blacklist_window must be > 0, "
+                f"got {self.canopen_abort_blacklist_window}"
+            )
 
         _validate_probability("mutation_rate", self.mutation_rate)
         _validate_probability("raw_extended_id_probability", self.raw_extended_id_probability)
@@ -112,9 +123,17 @@ class FuzzConfig:
             "uds_negative_response_awareness_probability",
             self.uds_negative_response_awareness_probability,
         )
+        _validate_probability("uds_adaptive_sequence_probability", self.uds_adaptive_sequence_probability)
+        _validate_probability("uds_nrc_backoff_probability", self.uds_nrc_backoff_probability)
         _validate_probability("j1939_tp_probability", self.j1939_tp_probability)
         _validate_probability("j1939_invalid_pgn_probability", self.j1939_invalid_pgn_probability)
+        _validate_probability(
+            "j1939_tp_sequence_anomaly_probability",
+            self.j1939_tp_sequence_anomaly_probability,
+        )
+        _validate_probability("j1939_tp_timing_fault_probability", self.j1939_tp_timing_fault_probability)
         _validate_probability("canopen_invalid_sdo_probability", self.canopen_invalid_sdo_probability)
+        _validate_probability("canopen_abort_aware_probability", self.canopen_abort_aware_probability)
 
         _validate_int_range("j1939_priority", self.j1939_priority, 0, 7)
         _validate_int_range("j1939_sa", self.j1939_sa, 0, 0xFF)

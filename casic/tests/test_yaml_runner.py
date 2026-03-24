@@ -175,3 +175,23 @@ protocols:
     run_a = json.loads(summary_a.read_text(encoding="utf-8"))["runs"][0]["run_id"]
     run_b = json.loads(summary_b.read_text(encoding="utf-8"))["runs"][0]["run_id"]
     assert run_a == run_b
+
+
+def test_yaml_runner_rejects_invalid_abort_blacklist_window(tmp_path: Path):
+    cfg = tmp_path / "invalid_abort_window.yaml"
+    cfg.write_text(
+        """
+global:
+  interface: can0
+  packet_count: 1
+
+protocols:
+  cosic:
+    enabled: true
+    canopen_abort_blacklist_window: 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="canopen_abort_blacklist_window"):
+        run_from_yaml(cfg)

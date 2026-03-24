@@ -59,6 +59,18 @@ def test_j1939_global_destination_uses_bam_cm_control():
     assert frame.data[0] == 0x20
 
 
+def test_j1939_tp_anomaly_and_timing_metadata_present():
+    cfg = _build_config(tp_probability=1.0)
+    cfg.j1939_tp_sequence_anomaly_probability = 1.0
+    cfg.j1939_tp_timing_fault_probability = 1.0
+
+    fuzzer = J1939Fuzzer(cfg)
+    frame = fuzzer.generate_frame(1)
+
+    assert frame.meta.get("tp_sequence_anomaly") in {"gap", "duplicate", "reorder"}
+    assert frame.meta.get("tp_timing_fault_ms") in {25, 50, 100, 250}
+
+
 def test_j1939_correlation_uses_pgn_and_address_context(tmp_path: Path):
     logger = PacketLogger()
     request_id = (3 << 26) | (0xEA << 16) | (0xFE << 8) | 0x80

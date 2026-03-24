@@ -13,6 +13,8 @@ class UDSFuzzer(BaseFuzzer):
         self._security_unlocked = False
         self._pending_security_key_subfunction: int | None = None
         self._last_negative_response: tuple[int, int] | None = None
+        self._last_positive_request_sid: int | None = None
+        self._consecutive_negative_responses = 0
 
     def _extract_uds_payload(self, frame: CANFrame) -> bytes:
         if not frame.data:
@@ -58,6 +60,28 @@ class UDSFuzzer(BaseFuzzer):
 
         return None
 
+    def _build_adaptive_service(self) -> tuple[int, int, bytes] | None:
+        if self._consecutive_negative_responses > 0:
+            if self.rng.random() < self.config.uds_nrc_backoff_probability:
+                return (0x10, self.rng.choice([0x01, 0x02, 0x03]), b"")
+
+            if self._last_negative_response is not None:
+                request_sid, nrc = self._last_negative_response
+                if nrc in {0x33, 0x35, 0x36, 0x37}:
+                    return (0x27, self.rng.choice([0x01, 0x03, 0x05]), b"")
+                if nrc == 0x78:
+                    return (request_sid, self.rng.randint(0, 0xFF), b"")
+
+        if self._last_positive_request_sid is not None:
+            sid = self._last_positive_request_sid
+            if sid == 0x10:
+                return (0x22, self.rng.randint(0, 0xFF), b"")
+            if sid == 0x27:
+                return (0x27, self.rng.choice([0x01, 0x03, 0x05]), b"")
+            return (sid, self.rng.randint(0, 0xFF), b"")
+
+        return None
+
     def should_accept_response(self, frame: CANFrame) -> bool:
         if self.config.uds_response_id is None:
             return True
@@ -71,6 +95,7 @@ class UDSFuzzer(BaseFuzzer):
         sid = payload[0]
         if sid == 0x7F and len(payload) >= 3:
             self._last_negative_response = (payload[1], payload[2])
+            self._consecutive_negative_responses += 1
             if payload[2] in {0x33, 0x35, 0x36, 0x37}:
                 self._security_unlocked = False
             return
@@ -80,6 +105,8 @@ class UDSFuzzer(BaseFuzzer):
 
         request_sid = sid - 0x40
         self._last_negative_response = None
+        self._last_positive_request_sid = request_sid
+        self._consecutive_negative_responses = 0
 
         if request_sid == 0x10:
             self._session_active = True
@@ -105,6 +132,30 @@ class UDSFuzzer(BaseFuzzer):
         extra_payload = b""
 
         if (
+            self.rng.random() < self.config.uds_adaptive_sequence_probability
+        ):
+            adaptive = self._build_adaptive_service()
+            if adaptive is not None:
+                sid, subfunction, extra_payload = adaptive
+            elif (
+                self.rng.random() < self.config.uds_negative_response_awareness_probability
+                and self._last_negative_response is not None
+            ):
+                followup = self._build_negative_response_followup()
+                if followup is not None:
+                    sid, subfunction, extra_payload = followup
+                else:
+                    sid = self.rng.uds_sid()
+                    subfunction = self.rng.randint(0, 0xFF)
+            elif self.rng.random() < self.config.uds_sequence_awareness_probability:
+                sid, subfunction, extra_payload = self._build_stateful_service()
+            elif self.rng.random() < self.config.uds_invalid_sid_probability:
+                sid = self.rng.choice([0x00, 0xFF, 0x7F])
+                subfunction = self.rng.randint(0, 0xFF)
+            else:
+                sid = self.rng.uds_sid()
+                subfunction = self.rng.randint(0, 0xFF)
+        elif (
             self.rng.random() < self.config.uds_negative_response_awareness_probability
             and self._last_negative_response is not None
         ):

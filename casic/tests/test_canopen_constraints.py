@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from casic.core.models import CANopenDictionary, DictionaryEntry, FuzzConfig
+from casic.core.models import CANFrame, CANopenDictionary, DictionaryEntry, FuzzConfig
 from casic.protocols.canopen import CANopenFuzzer
 
 
@@ -95,3 +95,43 @@ def test_pdo_mapping_uses_dictionary_sizes_and_padding():
 
     assert len(frame.data) == 8
     assert frame.data[3:] == b"\x00" * 5
+
+
+def test_canopen_abort_aware_blacklists_aborted_entry():
+    cfg = _build_config()
+    cfg.canopen_abort_aware_probability = 1.0
+    cfg.canopen_abort_blacklist_window = 3
+
+    dictionary = CANopenDictionary(
+        entries=[
+            DictionaryEntry(
+                index=0x2000,
+                subindex=0x00,
+                name="entry-a",
+                data_type="0x0006",
+                access_type="rw",
+            ),
+            DictionaryEntry(
+                index=0x2001,
+                subindex=0x00,
+                name="entry-b",
+                data_type="0x0006",
+                access_type="rw",
+            ),
+        ]
+    )
+    fuzzer = CANopenFuzzer(cfg, dictionary=dictionary)
+
+    # Abort code 0x06010002 (attempt to write a read-only object) for 0x2000:00
+    fuzzer.on_response(
+        CANFrame(
+            can_id=0x580 + cfg.node_id,
+            data=bytes([0x80, 0x00, 0x20, 0x00, 0x02, 0x00, 0x01, 0x06]),
+        )
+    )
+
+    frame = fuzzer._generate_sdo()
+    index = frame.data[1] | (frame.data[2] << 8)
+    subindex = frame.data[3]
+
+    assert (index, subindex) != (0x2000, 0x00)

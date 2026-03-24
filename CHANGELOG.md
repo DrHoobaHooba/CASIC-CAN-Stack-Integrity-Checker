@@ -5,6 +5,28 @@ All notable changes to CASIC (CAN Stack Integrity Checker) are documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] — 2026-03-24
+
+### Added
+
+- **UDS adaptive sequencing controls**: new adaptive follow-up logic and NRC backoff behavior via `uds_adaptive_sequence_probability` and `uds_nrc_backoff_probability`
+- **J1939 TP variant injection**: new TP DT sequence anomaly variants (`gap`, `duplicate`, `reorder`) and timing fault metadata support
+- **CANopen abort-aware adaptation**: optional SDO abort-code-aware object blacklisting with configurable blacklist window
+- **CLI and YAML knobs for deep variants**:
+	- UDS: `--adaptive-sequence-prob`, `--nrc-backoff-prob`
+	- J1939: `--tp-sequence-anomaly-prob`, `--tp-timing-fault-prob`
+	- CANopen: `--abort-aware-prob`, `--abort-blacklist-window`
+- **Expanded test coverage**: added focused tests for adaptive UDS behavior, J1939 TP anomaly/timing metadata, CANopen abort-aware blacklist adaptation, and new CLI/YAML validation paths
+
+### Changed
+
+- Updated example configs (`casic.yaml`, `casic-indepth.yaml`) with practical and aggressive defaults for new variant controls
+- Updated README advanced flag and feature documentation to include newly added deep-variant controls
+
+### Notes
+
+- Full test suite passes (`45 passed`)
+
 ## [0.0.4] — 2026-03-23
 
 ### Added

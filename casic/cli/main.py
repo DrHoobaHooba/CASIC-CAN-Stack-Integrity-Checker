@@ -85,10 +85,16 @@ def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
             "uds_negative_response_awareness_probability",
             0.6,
         ),
+        uds_adaptive_sequence_probability=getattr(args, "uds_adaptive_sequence_probability", 0.0),
+        uds_nrc_backoff_probability=getattr(args, "uds_nrc_backoff_probability", 0.0),
         uds_max_payload_len=getattr(args, "uds_max_payload_len", 50),
         j1939_tp_probability=getattr(args, "j1939_tp_probability", 0.1),
         j1939_invalid_pgn_probability=getattr(args, "j1939_invalid_pgn_probability", 0.0),
+        j1939_tp_sequence_anomaly_probability=getattr(args, "j1939_tp_sequence_anomaly_probability", 0.0),
+        j1939_tp_timing_fault_probability=getattr(args, "j1939_tp_timing_fault_probability", 0.0),
         canopen_invalid_sdo_probability=getattr(args, "canopen_invalid_sdo_probability", 0.0),
+        canopen_abort_aware_probability=getattr(args, "canopen_abort_aware_probability", 0.0),
+        canopen_abort_blacklist_window=getattr(args, "canopen_abort_blacklist_window", 5),
         canopen_mode_bias=getattr(args, "canopen_mode_bias", None),
     )
 
@@ -144,6 +150,20 @@ def main_udsic(argv: list[str] | None = None):
         default=0.6,
         help="Bias follow-up requests after NRC responses",
     )
+    parser.add_argument(
+        "--adaptive-sequence-prob",
+        dest="uds_adaptive_sequence_probability",
+        type=float,
+        default=0.0,
+        help="Bias UDS sequencing based on recent response outcomes",
+    )
+    parser.add_argument(
+        "--nrc-backoff-prob",
+        dest="uds_nrc_backoff_probability",
+        type=float,
+        default=0.0,
+        help="Probability of backoff behavior after negative responses",
+    )
     parser.add_argument("--uds-max-payload", dest="uds_max_payload_len", type=int, default=50)
     args = parser.parse_args(argv)
     config = _config_from_args(args)
@@ -161,6 +181,20 @@ def main_j1939sic(argv: list[str] | None = None):
     parser.add_argument("--da", dest="j1939_da", type=lambda x: int(x, 0), help="J1939 destination address")
     parser.add_argument("--tp-prob", dest="j1939_tp_probability", type=float, default=0.1)
     parser.add_argument("--invalid-pgn-prob", dest="j1939_invalid_pgn_probability", type=float, default=0.0)
+    parser.add_argument(
+        "--tp-sequence-anomaly-prob",
+        dest="j1939_tp_sequence_anomaly_probability",
+        type=float,
+        default=0.0,
+        help="Probability of J1939 TP sequence anomalies (gaps/duplicates/reorder)",
+    )
+    parser.add_argument(
+        "--tp-timing-fault-prob",
+        dest="j1939_tp_timing_fault_probability",
+        type=float,
+        default=0.0,
+        help="Probability of J1939 TP timing fault metadata injection",
+    )
     args = parser.parse_args(argv)
     config = _config_from_args(args)
     _ensure_observability_paths(config, "j1939sic")
@@ -180,6 +214,20 @@ def main_cosic(argv: list[str] | None = None):
     parser.add_argument("--tpdo1", dest="tpdo1_cobid", type=lambda x: int(x, 0), help="Override TPDO1 COB-ID")
     parser.add_argument("--rpdo1", dest="rpdo1_cobid", type=lambda x: int(x, 0), help="Override RPDO1 COB-ID")
     parser.add_argument("--invalid-sdo-prob", dest="canopen_invalid_sdo_probability", type=float, default=0.0)
+    parser.add_argument(
+        "--abort-aware-prob",
+        dest="canopen_abort_aware_probability",
+        type=float,
+        default=0.0,
+        help="Probability of applying abort-code-aware CANopen SDO adaptation",
+    )
+    parser.add_argument(
+        "--abort-blacklist-window",
+        dest="canopen_abort_blacklist_window",
+        type=int,
+        default=5,
+        help="Number of frames to avoid recently aborted CANopen objects",
+    )
     parser.add_argument(
         "--mode-bias",
         dest="canopen_mode_bias",

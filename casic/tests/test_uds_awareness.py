@@ -66,6 +66,23 @@ def test_security_seed_response_triggers_key_followup_subfunction():
     assert payload[1] == 0x02
 
 
+def test_adaptive_sequence_uses_previous_positive_response_outcome():
+    cfg = _build_config()
+    cfg.uds_sequence_awareness_probability = 0.0
+    cfg.uds_negative_response_awareness_probability = 0.0
+    cfg.uds_adaptive_sequence_probability = 1.0
+
+    fuzzer = UDSFuzzer(cfg)
+    # Positive response to Diagnostic Session Control (0x10 -> 0x50)
+    fuzzer.on_response(CANFrame(can_id=0x7E8, data=bytes([0x02, 0x50, 0x01, 0, 0, 0, 0, 0])))
+
+    frame = fuzzer.generate_frame(1)
+    payload = _decode_single_frame_app_payload(frame)
+
+    assert payload
+    assert payload[0] == 0x22
+
+
 def test_uds_correlation_uses_service_context_and_writes_summary_metrics(tmp_path: Path):
     logger = PacketLogger()
     logger.record_sent(CANFrame(can_id=0x7E0, data=bytes([0x02, 0x10, 0x01, 0, 0, 0, 0, 0]), timestamp=10.0))

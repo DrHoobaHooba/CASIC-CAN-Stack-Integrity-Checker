@@ -10,19 +10,19 @@ global:
   # Generic destination fallback. Protocols may reinterpret this value.
   destination: rand
   # Primary frame count per enabled protocol section.
-  packet_count: 10000
+  packet_count: 25000
   # Progress print frequency.
-  print_interval: 1000
+  print_interval: 2500
   # Deterministic random seed.
   seed: 42
   # Per-mutation apply probability when mutation_chain is used (must be 0.0..1.0).
-  mutation_rate: 0.7
+  mutation_rate: 0.55
   # Optional run summary output (aggregate for YAML runs).
-  summary_enabled: false
+  summary_enabled: true
   # Path for summary JSON when summary_enabled=true.
   summary_file: ./replay/casic_summary.json
   # Optional profile label added to replay metadata.
-  profile_name: practical-default
+  profile_name: baseline-balanced
 
 # Protocol blocks: enabled=false means section is skipped and all its parameters are ignored.
 protocols:
@@ -40,31 +40,35 @@ protocols:
     # Maximum payload length in bytes.
     payload_max_len: 8
     # Probability to use 29-bit extended IDs.
-    raw_extended_id_probability: 0.1
+    raw_extended_id_probability: 0.08
     # Probability to use CAN-FD per frame.
-    raw_fd_probability: 0.05
+    raw_fd_probability: 0.03
     # Probability to request error-frame-style injection metadata.
-    raw_error_injection_probability: 0.02
+    raw_error_injection_probability: 0.01
     # Replay output path for sent raw CAN frames.
     save_replay_file: ./replay/cansic_from_yaml.jsonl
 
   udsic:
     # Enable UDS over CAN fuzzing.
-    enabled: false
+    enabled: true
     # UDS request CAN-ID (tester -> ECU).
     uds_request_id: 0x7E0
     # UDS response CAN-ID filter (ECU -> tester).
     uds_response_id: 0x7E8
     # Probability of selecting invalid/unusual UDS SIDs.
-    uds_invalid_sid_probability: 0.1
+    uds_invalid_sid_probability: 0.05
     # Probability of malformed ISO-TP PCI corruption.
-    uds_malformed_pci_probability: 0.2
+    uds_malformed_pci_probability: 0.1
     # Probability of preferring stateful UDS service progression.
-    uds_sequence_awareness_probability: 0.6
+    uds_sequence_awareness_probability: 0.7
     # Probability of adapting requests after negative responses (NRC-aware).
-    uds_negative_response_awareness_probability: 0.6
+    uds_negative_response_awareness_probability: 0.55
+    # Probability of adapting UDS services based on prior response outcomes.
+    uds_adaptive_sequence_probability: 0.25
+    # Probability of explicit backoff branch after NRC responses.
+    uds_nrc_backoff_probability: 0.2
     # Max UDS payload before/with segmentation.
-    uds_max_payload_len: 128
+    uds_max_payload_len: 96
     # Optional request-response correlation report.
     correlation_enabled: false
     # Output CSV path for UDS correlation report.
@@ -74,7 +78,7 @@ protocols:
 
   j1939sic:
     # Enable J1939 fuzzing.
-    enabled: false
+    enabled: true
     # J1939 priority (0 highest .. 7 lowest).
     j1939_priority: 3
     # Base PGN value.
@@ -84,9 +88,13 @@ protocols:
     # Destination address.
     j1939_da: 0xFE
     # Probability of transport-protocol-like packet patterns.
-    j1939_tp_probability: 0.2
+    j1939_tp_probability: 0.25
     # Probability of boundary/invalid-ish PGN selection.
-    j1939_invalid_pgn_probability: 0.1
+    j1939_invalid_pgn_probability: 0.08
+    # Probability of TP DT sequence anomalies (gap/duplicate/reorder).
+    j1939_tp_sequence_anomaly_probability: 0.03
+    # Probability of TP timing fault metadata injection.
+    j1939_tp_timing_fault_probability: 0.03
     # Optional request-response correlation report.
     correlation_enabled: false
     # Output CSV path for J1939 correlation report.
@@ -102,8 +110,12 @@ protocols:
     # EDS dictionary file for object-based structured fuzzing.
     eds: ./casic/examples/node.eds
     # Probability of SDO command/subindex corruption.
-    canopen_invalid_sdo_probability: 0.15
+    canopen_invalid_sdo_probability: 0.1
+    # Probability of adapting SDO targeting based on observed abort codes.
+    canopen_abort_aware_probability: 0.35
+    # Frames to avoid recently aborted object entries.
+    canopen_abort_blacklist_window: 8
     # Traffic family bias: balanced | sdo-heavy | pdo-heavy | control-heavy.
-    canopen_mode_bias: sdo-heavy
+    canopen_mode_bias: balanced
     # Replay output path for sent CANopen frames.
     save_replay_file: ./replay/cosic_from_yaml.jsonl

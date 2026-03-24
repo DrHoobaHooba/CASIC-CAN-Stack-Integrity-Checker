@@ -7,6 +7,47 @@ from casic.core.models import CANFrame
 class J1939Fuzzer(BaseFuzzer):
     protocol_name = "j1939"
 
+    def _with_sequence(self, frame: CANFrame, sequence: int) -> CANFrame:
+        payload = bytes([sequence & 0xFF]) + frame.data[1:]
+        return CANFrame(
+            can_id=frame.can_id,
+            data=payload,
+            is_extended_id=frame.is_extended_id,
+            is_fd=frame.is_fd,
+            timestamp=frame.timestamp,
+            meta=dict(frame.meta),
+        )
+
+    def _apply_tp_sequence_anomaly(self, burst_frames: list[CANFrame]) -> str | None:
+        if len(burst_frames) < 2:
+            return None
+        if self.rng.random() >= self.config.j1939_tp_sequence_anomaly_probability:
+            return None
+
+        anomaly = self.rng.choice(["gap", "duplicate", "reorder"])
+
+        if anomaly == "gap":
+            index = self.rng.randint(1, len(burst_frames) - 1)
+            current_seq = burst_frames[index].data[0]
+            burst_frames[index] = self._with_sequence(burst_frames[index], (current_seq + 1) & 0xFF)
+            return "gap"
+
+        if anomaly == "duplicate":
+            index = self.rng.randint(1, len(burst_frames) - 1)
+            previous_seq = burst_frames[index - 1].data[0]
+            burst_frames[index] = self._with_sequence(burst_frames[index], previous_seq)
+            return "duplicate"
+
+        if len(burst_frames) < 3:
+            index = self.rng.randint(1, len(burst_frames) - 1)
+            previous_seq = burst_frames[index - 1].data[0]
+            burst_frames[index] = self._with_sequence(burst_frames[index], previous_seq)
+            return "duplicate"
+        left = self.rng.randint(1, len(burst_frames) - 2)
+        right = self.rng.randint(left + 1, len(burst_frames) - 1)
+        burst_frames[left], burst_frames[right] = burst_frames[right], burst_frames[left]
+        return "reorder"
+
     def _build_can_id(self, priority: int, pgn: int, sa: int) -> int:
         return (priority << 26) | (pgn << 8) | sa
 
@@ -49,11 +90,20 @@ class J1939Fuzzer(BaseFuzzer):
             )
             sequence += 1
 
+        anomaly = self._apply_tp_sequence_anomaly(burst_frames)
+        timing_fault_ms: int | None = None
+        if self.rng.random() < self.config.j1939_tp_timing_fault_probability:
+            timing_fault_ms = self.rng.choice([25, 50, 100, 250])
+
         return CANFrame(
             can_id=self._build_can_id(priority, tp_cm_pgn, sa),
             data=cm_data,
             is_extended_id=True,
-            meta={"burst": burst_frames},
+            meta={
+                "burst": burst_frames,
+                "tp_sequence_anomaly": anomaly,
+                "tp_timing_fault_ms": timing_fault_ms,
+            },
         )
 
     def generate_frame(self, sequence_number: int) -> CANFrame:

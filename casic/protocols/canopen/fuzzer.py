@@ -26,6 +26,7 @@ class CANopenFuzzer(BaseFuzzer):
         self._entries_by_key = {
             (entry.index, entry.subindex): entry for entry in self.dictionary.entries
         }
+        self._abort_blacklist: dict[tuple[int, int], int] = {}
         self.node_id = config.node_id
         self.destination_cobid = None
         if config.destination != "rand":
@@ -67,7 +68,55 @@ class CANopenFuzzer(BaseFuzzer):
     def _random_dictionary_entry(self) -> DictionaryEntry | None:
         if not self.dictionary.entries:
             return None
+        if self.config.canopen_abort_aware_probability > 0.0:
+            candidates = [
+                entry
+                for entry in self.dictionary.entries
+                if self._abort_blacklist.get((entry.index, entry.subindex), 0) <= 0
+            ]
+            if candidates:
+                return self.rng.choice(candidates)
         return self.rng.choice(self.dictionary.entries)
+
+    def should_accept_response(self, frame: CANFrame) -> bool:
+        sdo_tx_cobid = self._resolve_cob_id("SDO_TX", 0x580)
+        return frame.can_id == sdo_tx_cobid
+
+    def _decay_abort_blacklist(self):
+        expired: list[tuple[int, int]] = []
+        for key, remaining in self._abort_blacklist.items():
+            next_value = remaining - 1
+            if next_value <= 0:
+                expired.append(key)
+            else:
+                self._abort_blacklist[key] = next_value
+        for key in expired:
+            self._abort_blacklist.pop(key, None)
+
+    def on_response(self, frame: CANFrame):
+        if len(frame.data) < 8:
+            return
+        if frame.data[0] != 0x80:
+            return
+        if self.rng.random() >= self.config.canopen_abort_aware_probability:
+            return
+
+        index = frame.data[1] | (frame.data[2] << 8)
+        subindex = frame.data[3]
+        abort_code = int.from_bytes(frame.data[4:8], byteorder="little", signed=False)
+
+        # Common abort-code classes where retrying the same object is low-value.
+        if abort_code in {
+            0x05040000,
+            0x06010000,
+            0x06010001,
+            0x06010002,
+            0x06020000,
+            0x06090011,
+            0x06090030,
+            0x08000000,
+        }:
+            self._abort_blacklist[(index, subindex)] = self.config.canopen_abort_blacklist_window
 
     def _parse_optional_int(self, text: str | None) -> int | None:
         if text is None:
@@ -171,6 +220,7 @@ class CANopenFuzzer(BaseFuzzer):
         return CANFrame(can_id=0x100, data=self.rng.randbytes(6))
 
     def generate_frame(self, sequence_number: int) -> CANFrame:
+        self._decay_abort_blacklist()
         bias = self.config.canopen_mode_bias or "balanced"
         if bias == "sdo-heavy":
             mode = self.rng.choice(["sdo", "sdo", "sdo", "pdo", "nmt", "emcy", "sync_time"])

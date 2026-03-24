@@ -11,11 +11,11 @@ global:
   # Number of primary frames generated per enabled protocol run.
   packet_count: 1000000
   # Print progress every N generated frames.
-  print_interval: 5000
+  print_interval: 10000
   # RNG seed for reproducible fuzz runs.
   seed: 1337
   # Probability (0..1) that each mutation in a mutation_chain is applied.
-  mutation_rate: 0.95
+  mutation_rate: 0.85
   # Optional run summary output (aggregate for YAML runs).
   summary_enabled: true
   # Path for summary JSON when summary_enabled=true.
@@ -43,25 +43,29 @@ protocols:
     # Probability (0..1) to emit CAN-FD frames (in addition to can_fd setting).
     raw_fd_probability: 0.95
     # Probability (0..1) to tag frame as error-injection request (backend dependent).
-    raw_error_injection_probability: 0.35
+    raw_error_injection_probability: 0.15
     # Output file for replay capture of sent frames.
     save_replay_file: ./replay/cansic_indepth.jsonl
 
   udsic:
     # Enable/disable UDS fuzzing section.
-    enabled: false
+    enabled: true
     # UDS request arbitration ID (tester -> ECU).
     uds_request_id: 0x7E0
     # Expected UDS response arbitration ID filter (ECU -> tester).
     uds_response_id: 0x7E8
     # Probability (0..1) to force invalid/unusual UDS service IDs.
-    uds_invalid_sid_probability: 0.7
+    uds_invalid_sid_probability: 0.35
     # Probability (0..1) to corrupt ISO-TP PCI bytes.
-    uds_malformed_pci_probability: 0.75
+    uds_malformed_pci_probability: 0.25
     # Probability (0..1) to prefer stateful UDS service progression.
-    uds_sequence_awareness_probability: 0.9
+    uds_sequence_awareness_probability: 0.95
     # Probability (0..1) to adapt requests after negative responses (NRC-aware).
     uds_negative_response_awareness_probability: 0.9
+    # Probability (0..1) to adapt UDS services based on prior response outcomes.
+    uds_adaptive_sequence_probability: 0.9
+    # Probability (0..1) of explicit backoff branch after NRC responses.
+    uds_nrc_backoff_probability: 0.45
     # Maximum application payload length before ISO-TP segmentation.
     uds_max_payload_len: 512
     # Optional request-response correlation report.
@@ -75,7 +79,7 @@ protocols:
 
   j1939sic:
     # Enable/disable J1939 fuzzing section.
-    enabled: false
+    enabled: true
     # J1939 priority (0 highest .. 7 lowest).
     j1939_priority: 0
     # J1939 PGN base value for generation.
@@ -85,9 +89,13 @@ protocols:
     # J1939 destination address.
     j1939_da: 0xFE
     # Probability (0..1) to generate transport-protocol-like traffic patterns.
-    j1939_tp_probability: 0.8
+    j1939_tp_probability: 0.9
     # Probability (0..1) to use boundary/invalid-ish PGN variants.
-    j1939_invalid_pgn_probability: 0.6
+    j1939_invalid_pgn_probability: 0.25
+    # Probability (0..1) of TP DT sequence anomalies (gap/duplicate/reorder).
+    j1939_tp_sequence_anomaly_probability: 0.3
+    # Probability (0..1) of TP timing fault metadata injection.
+    j1939_tp_timing_fault_probability: 0.2
     # Optional request-response correlation report.
     correlation_enabled: true
     # Output CSV path for J1939 correlation report.
@@ -111,9 +119,13 @@ protocols:
     # Explicit RPDO1 COB-ID override.
     rpdo1_cobid: 0x261
     # Probability (0..1) to corrupt SDO command/subindex fields.
-    canopen_invalid_sdo_probability: 0.8
+    canopen_invalid_sdo_probability: 0.35
+    # Probability (0..1) to adapt SDO targeting based on observed abort codes.
+    canopen_abort_aware_probability: 0.85
+    # Frames to avoid recently aborted object entries.
+    canopen_abort_blacklist_window: 20
     # Frame-family bias: balanced | sdo-heavy | pdo-heavy | control-heavy.
-    canopen_mode_bias: control-heavy
+    canopen_mode_bias: sdo-heavy
     # CANopen EDS file used to load object dictionary and mapping metadata.
     eds: ./casic/examples/node.eds
     # Output file for replay capture of sent CANopen frames.
