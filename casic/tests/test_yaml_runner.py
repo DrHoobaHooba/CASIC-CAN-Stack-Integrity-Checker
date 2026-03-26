@@ -195,3 +195,43 @@ protocols:
 
     with pytest.raises(ValueError, match="canopen_abort_blacklist_window"):
         run_from_yaml(cfg)
+
+
+def test_yaml_runner_rejects_invalid_j1939_order_fault_probability(tmp_path: Path):
+    cfg = tmp_path / "invalid_j1939_order_fault.yaml"
+    cfg.write_text(
+        """
+global:
+  interface: can0
+  packet_count: 1
+
+protocols:
+  j1939sic:
+    enabled: true
+    j1939_tp_cm_dt_order_fault_probability: 2.0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="j1939_tp_cm_dt_order_fault_probability"):
+        run_from_yaml(cfg)
+
+
+def test_yaml_runner_rejects_invalid_canopen_array_bounds_probability(tmp_path: Path):
+    cfg = tmp_path / "invalid_canopen_bounds.yaml"
+    cfg.write_text(
+        """
+global:
+  interface: can0
+  packet_count: 1
+
+protocols:
+  cosic:
+    enabled: true
+    canopen_array_bounds_aware_probability: -0.1
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="canopen_array_bounds_aware_probability"):
+        run_from_yaml(cfg)

@@ -83,6 +83,51 @@ def test_adaptive_sequence_uses_previous_positive_response_outcome():
     assert payload[0] == 0x22
 
 
+def test_recovery_probe_prefers_tester_present_after_session_error():
+    cfg = _build_config()
+    cfg.uds_sequence_awareness_probability = 0.0
+    cfg.uds_negative_response_awareness_probability = 0.0
+    cfg.uds_adaptive_sequence_probability = 0.0
+    cfg.uds_recovery_probe_probability = 1.0
+
+    fuzzer = UDSFuzzer(cfg)
+    fuzzer.on_response(CANFrame(can_id=0x7E8, data=bytes([0x03, 0x7F, 0x10, 0x7E, 0, 0, 0, 0])))
+
+    frame = fuzzer.generate_frame(1)
+    payload = _decode_single_frame_app_payload(frame)
+
+    assert payload
+    assert payload[0] == 0x3E
+
+
+def test_consecutive_frame_sequence_anomaly_is_exposed_in_metadata(monkeypatch):
+    cfg = _build_config()
+    cfg.uds_sequence_awareness_probability = 0.0
+    cfg.uds_negative_response_awareness_probability = 0.0
+    cfg.uds_adaptive_sequence_probability = 0.0
+    cfg.uds_invalid_sid_probability = 0.0
+    cfg.uds_consecutive_frame_sequence_anomaly_probability = 1.0
+    cfg.uds_max_payload_len = 12
+
+    fuzzer = UDSFuzzer(cfg)
+    original_randint = fuzzer.rng.randint
+
+    def fake_randint(minimum: int, maximum: int) -> int:
+        if minimum == 0 and maximum == cfg.uds_max_payload_len:
+            return maximum
+        return original_randint(minimum, maximum)
+
+    monkeypatch.setattr(fuzzer.rng, "randint", fake_randint)
+
+    frame = fuzzer.generate_frame(1)
+
+    assert frame.meta.get("uds_cf_sequence_anomaly") in {"gap", "duplicate", "restart"}
+    burst = frame.meta.get("burst", [])
+    assert burst
+    sequences = [cf.data[0] & 0x0F for cf in burst]
+    assert sequences != list(range(1, len(sequences) + 1))
+
+
 def test_uds_correlation_uses_service_context_and_writes_summary_metrics(tmp_path: Path):
     logger = PacketLogger()
     logger.record_sent(CANFrame(can_id=0x7E0, data=bytes([0x02, 0x10, 0x01, 0, 0, 0, 0, 0]), timestamp=10.0))

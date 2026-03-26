@@ -5,6 +5,29 @@ All notable changes to CASIC (CAN Stack Integrity Checker) are documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.6] — 2026-03-26
+
+### Added
+
+- **UDS ISO-TP edge-case controls**: added controls for single-frame and first-frame length mismatch, consecutive-frame sequence anomalies, and recovery probes (`uds_single_frame_length_mismatch_probability`, `uds_first_frame_length_mismatch_probability`, `uds_consecutive_frame_sequence_anomaly_probability`, `uds_recovery_probe_probability`)
+- **J1939 TP deep fault controls**: added incomplete DT truncation, CM/DT ordering faults, and packet-count mismatch controls (`j1939_tp_incomplete_dt_probability`, `j1939_tp_cm_dt_order_fault_probability`, `j1939_tp_packet_count_mismatch_probability`)
+- **CANopen stateful depth controls**: added NMT state-awareness and segmented download controls (`canopen_nmt_state_aware_probability`, `canopen_segmented_sdo_probability`) plus parser-backed array/subindex bounds-awareness (`canopen_array_bounds_aware_probability`)
+- **CANopen dictionary metadata extension**: parser now captures subindex-0 array-size hints into dictionary metadata for bounds-aware generation
+- **Expanded v0.0.6 test coverage**: added protocol behavior and config-validation tests for new UDS/J1939/CANopen depth features
+
+### Changed
+
+- Updated baseline and indepth YAML profiles to include v0.0.6 controls with practical and aggressive values
+- Updated CLI/YAML and README flag surfaces to expose all v0.0.6 protocol-depth controls consistently
+
+### Fixed
+
+- **CANopen runtime parsing tolerance**: gracefully handles non-numeric data type strings (for example `UNKNOWN`) in optional integer parsing paths
+
+### Notes
+
+- Full test suite passes (`58 passed`)
+
 ## [0.0.5] — 2026-03-24
 
 ### Added

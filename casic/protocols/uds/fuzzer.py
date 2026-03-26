@@ -16,6 +16,12 @@ class UDSFuzzer(BaseFuzzer):
         self._last_positive_request_sid: int | None = None
         self._consecutive_negative_responses = 0
 
+    def _mismatched_length(self, actual_length: int, minimum: int, maximum: int) -> int:
+        candidates = [value for value in range(minimum, maximum + 1) if value != actual_length]
+        if not candidates:
+            return actual_length
+        return self.rng.choice(candidates)
+
     def _extract_uds_payload(self, frame: CANFrame) -> bytes:
         if not frame.data:
             return b""
@@ -82,6 +88,51 @@ class UDSFuzzer(BaseFuzzer):
 
         return None
 
+    def _build_recovery_probe(self) -> tuple[int, int, bytes] | None:
+        if self._last_negative_response is not None:
+            request_sid, nrc = self._last_negative_response
+            if nrc in {0x33, 0x35, 0x36, 0x37}:
+                return (0x10, self.rng.choice([0x01, 0x02, 0x03]), b"")
+            if nrc in {0x12, 0x31, 0x7E, 0x7F}:
+                return (0x3E, 0x00, b"")
+            if nrc == 0x78:
+                return (request_sid, 0x00, b"")
+
+        if self._session_active and not self._security_unlocked:
+            return (0x3E, 0x00, b"")
+
+        if self._security_unlocked:
+            return (0x22, self.rng.randint(0, 0xFF), b"")
+
+        return None
+
+    def _apply_cf_sequence_anomaly(self, burst_frames: list[CANFrame]) -> str | None:
+        if len(burst_frames) < 2:
+            return None
+        if self.rng.random() >= self.config.uds_consecutive_frame_sequence_anomaly_probability:
+            return None
+
+        anomaly = self.rng.choice(["gap", "duplicate", "restart"])
+        index = self.rng.randint(1, len(burst_frames) - 1)
+        previous_seq = burst_frames[index - 1].data[0] & 0x0F
+
+        if anomaly == "gap":
+            seq = ((burst_frames[index].data[0] & 0x0F) + 1) & 0x0F
+        elif anomaly == "duplicate":
+            seq = previous_seq
+        else:
+            seq = 1
+
+        burst_frames[index] = CANFrame(
+            can_id=burst_frames[index].can_id,
+            data=bytes([(0x20 | seq)]) + burst_frames[index].data[1:],
+            is_extended_id=burst_frames[index].is_extended_id,
+            is_fd=burst_frames[index].is_fd,
+            timestamp=burst_frames[index].timestamp,
+            meta=dict(burst_frames[index].meta),
+        )
+        return anomaly
+
     def should_accept_response(self, frame: CANFrame) -> bool:
         if self.config.uds_response_id is None:
             return True
@@ -137,6 +188,13 @@ class UDSFuzzer(BaseFuzzer):
             adaptive = self._build_adaptive_service()
             if adaptive is not None:
                 sid, subfunction, extra_payload = adaptive
+            elif self.rng.random() < self.config.uds_recovery_probe_probability:
+                probe = self._build_recovery_probe()
+                if probe is not None:
+                    sid, subfunction, extra_payload = probe
+                else:
+                    sid = self.rng.uds_sid()
+                    subfunction = self.rng.randint(0, 0xFF)
             elif (
                 self.rng.random() < self.config.uds_negative_response_awareness_probability
                 and self._last_negative_response is not None
@@ -152,6 +210,15 @@ class UDSFuzzer(BaseFuzzer):
             elif self.rng.random() < self.config.uds_invalid_sid_probability:
                 sid = self.rng.choice([0x00, 0xFF, 0x7F])
                 subfunction = self.rng.randint(0, 0xFF)
+            else:
+                sid = self.rng.uds_sid()
+                subfunction = self.rng.randint(0, 0xFF)
+        elif (
+            self.rng.random() < self.config.uds_recovery_probe_probability
+        ):
+            probe = self._build_recovery_probe()
+            if probe is not None:
+                sid, subfunction, extra_payload = probe
             else:
                 sid = self.rng.uds_sid()
                 subfunction = self.rng.randint(0, 0xFF)
@@ -178,14 +245,25 @@ class UDSFuzzer(BaseFuzzer):
         app_payload = bytes([sid, subfunction]) + extra_payload + self.rng.randbytes(payload_len)
 
         if len(app_payload) <= 7:
-            pci = bytes([len(app_payload)])
+            advertised_length = len(app_payload)
+            mismatch = None
+            if self.rng.random() < self.config.uds_single_frame_length_mismatch_probability:
+                advertised_length = self._mismatched_length(len(app_payload), 1, 7)
+                mismatch = "single-frame"
+            pci = bytes([advertised_length])
             if self.rng.random() < self.config.uds_malformed_pci_probability:
                 pci = bytes([self.rng.choice([0xFF, 0x7F, 0x00])])
             payload = (pci + app_payload).ljust(8, b"\x00")
-            return CANFrame(can_id=dst_id, data=payload)
+            meta = {"uds_length_mismatch": mismatch} if mismatch is not None else {}
+            return CANFrame(can_id=dst_id, data=payload, meta=meta)
 
         total_len = len(app_payload)
-        ff_header = bytes([(0x10 | ((total_len >> 8) & 0x0F)), total_len & 0xFF])
+        advertised_total_len = total_len
+        length_mismatch = None
+        if self.rng.random() < self.config.uds_first_frame_length_mismatch_probability:
+            advertised_total_len = self._mismatched_length(total_len, 8, min(self.config.uds_max_payload_len + 8, 0xFFF))
+            length_mismatch = "first-frame"
+        ff_header = bytes([(0x10 | ((advertised_total_len >> 8) & 0x0F)), advertised_total_len & 0xFF])
         if self.rng.random() < self.config.uds_malformed_pci_probability:
             ff_header = bytes([self.rng.choice([0x00, 0x2F, 0x3F]), ff_header[1]])
         ff = ff_header + app_payload[:6]
@@ -201,4 +279,10 @@ class UDSFuzzer(BaseFuzzer):
             cf = bytes([cf_header]) + chunk
             burst_frames.append(CANFrame(can_id=dst_id, data=cf.ljust(8, b"\x00")))
             seq = (seq + 1) & 0x0F
-        return CANFrame(can_id=dst_id, data=ff.ljust(8, b"\x00"), meta={"burst": burst_frames})
+        cf_anomaly = self._apply_cf_sequence_anomaly(burst_frames)
+        meta = {"burst": burst_frames}
+        if length_mismatch is not None:
+            meta["uds_length_mismatch"] = length_mismatch
+        if cf_anomaly is not None:
+            meta["uds_cf_sequence_anomaly"] = cf_anomaly
+        return CANFrame(can_id=dst_id, data=ff.ljust(8, b"\x00"), meta=meta)

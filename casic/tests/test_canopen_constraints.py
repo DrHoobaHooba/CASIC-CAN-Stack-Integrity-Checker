@@ -135,3 +135,71 @@ def test_canopen_abort_aware_blacklists_aborted_entry():
     subindex = frame.data[3]
 
     assert (index, subindex) != (0x2000, 0x00)
+
+
+def test_segmented_sdo_generates_burst_frames():
+    cfg = _build_config()
+    cfg.canopen_segmented_sdo_probability = 1.0
+
+    dictionary = CANopenDictionary(
+        entries=[
+            DictionaryEntry(
+                index=0x2100,
+                subindex=0x00,
+                name="u64-entry",
+                data_type="0x001B",
+                access_type="rw",
+            )
+        ]
+    )
+    fuzzer = CANopenFuzzer(cfg, dictionary=dictionary)
+
+    frame = fuzzer._generate_sdo()
+
+    assert frame.meta.get("canopen_transfer") == "segmented"
+    burst = frame.meta.get("burst", [])
+    assert burst
+    toggles = [(segment.data[0] >> 4) & 0x01 for segment in burst[:2]]
+    assert toggles == [0, 1]
+
+
+def test_nmt_state_awareness_avoids_preoperational_stop_transition():
+    cfg = _build_config()
+    cfg.canopen_nmt_state_aware_probability = 1.0
+    fuzzer = CANopenFuzzer(cfg)
+
+    frame = fuzzer._generate_nmt()
+
+    assert frame.data[0] in {0x01, 0x80, 0x81, 0x82}
+    assert frame.data[0] != 0x02
+
+
+def test_array_bounds_awareness_skips_entries_above_parser_hint():
+    cfg = _build_config()
+    cfg.canopen_array_bounds_aware_probability = 1.0
+    dictionary = CANopenDictionary(
+        entries=[
+            DictionaryEntry(
+                index=0x2200,
+                subindex=0x01,
+                name="valid-sub-1",
+                data_type="0x0005",
+                access_type="rw",
+            ),
+            DictionaryEntry(
+                index=0x2200,
+                subindex=0x04,
+                name="invalid-sub-4",
+                data_type="0x0005",
+                access_type="rw",
+            ),
+        ],
+        array_sizes={0x2200: 2},
+    )
+    fuzzer = CANopenFuzzer(cfg, dictionary=dictionary)
+
+    frame = fuzzer._generate_sdo()
+
+    assert frame.data[1] == 0x00
+    assert frame.data[2] == 0x22
+    assert frame.data[3] <= 2

@@ -27,6 +27,7 @@ class CANopenFuzzer(BaseFuzzer):
             (entry.index, entry.subindex): entry for entry in self.dictionary.entries
         }
         self._abort_blacklist: dict[tuple[int, int], int] = {}
+        self._nmt_state = "pre-operational"
         self.node_id = config.node_id
         self.destination_cobid = None
         if config.destination != "rand":
@@ -68,15 +69,22 @@ class CANopenFuzzer(BaseFuzzer):
     def _random_dictionary_entry(self) -> DictionaryEntry | None:
         if not self.dictionary.entries:
             return None
+        candidates = list(self.dictionary.entries)
         if self.config.canopen_abort_aware_probability > 0.0:
             candidates = [
                 entry
-                for entry in self.dictionary.entries
+                for entry in candidates
                 if self._abort_blacklist.get((entry.index, entry.subindex), 0) <= 0
             ]
-            if candidates:
-                return self.rng.choice(candidates)
-        return self.rng.choice(self.dictionary.entries)
+        if self.config.canopen_array_bounds_aware_probability > 0.0:
+            bounded_candidates = [
+                entry
+                for entry in candidates
+                if entry.subindex <= self.dictionary.array_sizes.get(entry.index, entry.subindex)
+            ]
+            if bounded_candidates:
+                candidates = bounded_candidates
+        return self.rng.choice(candidates or self.dictionary.entries)
 
     def should_accept_response(self, frame: CANFrame) -> bool:
         sdo_tx_cobid = self._resolve_cob_id("SDO_TX", 0x580)
@@ -124,11 +132,14 @@ class CANopenFuzzer(BaseFuzzer):
         value = str(text).strip()
         if not value:
             return None
-        if value.lower().startswith("0x"):
-            return int(value, 16)
-        if value.lower().endswith("h"):
-            return int(value[:-1], 16)
-        return int(value)
+        try:
+            if value.lower().startswith("0x"):
+                return int(value, 16)
+            if value.lower().endswith("h"):
+                return int(value[:-1], 16)
+            return int(value)
+        except ValueError:
+            return None
 
     def _pick_sdo_command(self, entry: DictionaryEntry | None) -> int:
         if entry is None:
@@ -164,6 +175,25 @@ class CANopenFuzzer(BaseFuzzer):
             return 1
         return self._DATA_TYPE_SIZE_BYTES.get(data_type, 1)
 
+    def _build_expedited_command(self, size_bytes: int) -> int:
+        size_bytes = max(1, min(size_bytes, 4))
+        unused = 4 - size_bytes
+        return 0x23 | (unused << 2)
+
+    def _build_segmented_download(self, cob_id: int, idx: int, sub: int, payload: bytes) -> CANFrame:
+        initiate = bytes([0x21, idx & 0xFF, (idx >> 8) & 0xFF, sub]) + len(payload).to_bytes(4, "little")
+        burst_frames: list[CANFrame] = []
+        toggle = 0
+        remaining = payload
+        while remaining:
+            chunk, remaining = remaining[:7], remaining[7:]
+            is_last = not remaining
+            unused = 7 - len(chunk)
+            command = (toggle << 4) | ((unused & 0x07) << 1) | (1 if is_last else 0)
+            burst_frames.append(CANFrame(can_id=cob_id, data=(bytes([command]) + chunk).ljust(8, b"\x00")))
+            toggle ^= 1
+        return CANFrame(can_id=cob_id, data=initiate, meta={"burst": burst_frames, "canopen_transfer": "segmented"})
+
     def _generate_sdo(self) -> CANFrame:
         cob_id = self._resolve_cob_id("SDO_RX", 0x600)
         entry = self._random_dictionary_entry()
@@ -174,15 +204,32 @@ class CANopenFuzzer(BaseFuzzer):
         else:
             idx = entry.index
             sub = entry.subindex
+            if self.config.canopen_array_bounds_aware_probability > 0.0:
+                array_size = self.dictionary.array_sizes.get(idx)
+                if array_size is not None:
+                    sub = min(sub, array_size)
 
         command = self._pick_sdo_command(entry)
         if self.rng.random() < self.config.canopen_invalid_sdo_probability:
             command = self.rng.choice([0x00, 0x7F, 0xFF, 0x10])
-        value = self._generate_value(entry, command)
+        size = self._entry_size_bytes(entry)
+        if command != 0x40 and size <= 4:
+            command = self._build_expedited_command(size)
+        if command == 0x40:
+            value = self.rng.randbytes(4)
+        else:
+            raw_value = self._generate_value(entry, command)
+            value = raw_value[: max(1, size)]
         if self.rng.random() < self.config.canopen_invalid_sdo_probability:
             sub = self.rng.choice([0xFF, 0x80, 0x7F])
+        if command != 0x40 and (
+            size > 4 or self.rng.random() < self.config.canopen_segmented_sdo_probability
+        ):
+            payload_size = max(size, 5)
+            payload = self.rng.randbytes(payload_size)
+            return self._build_segmented_download(cob_id, idx, sub, payload)
         data = bytes([command, idx & 0xFF, (idx >> 8) & 0xFF, sub]) + value
-        return CANFrame(can_id=cob_id, data=data)
+        return CANFrame(can_id=cob_id, data=data.ljust(8, b"\x00"))
 
     def _generate_pdo(self) -> CANFrame:
         pdo_id = self._resolve_cob_id("TPDO1", 0x180)
@@ -202,9 +249,23 @@ class CANopenFuzzer(BaseFuzzer):
         return CANFrame(can_id=pdo_id, data=bytes(payload).ljust(8, b"\x00"))
 
     def _generate_nmt(self) -> CANFrame:
-        command = self.rng.choice([0x01, 0x02, 0x80, 0x81, 0x82])
+        if self.rng.random() < self.config.canopen_nmt_state_aware_probability:
+            transitions = {
+                "pre-operational": [0x01, 0x80, 0x81, 0x82],
+                "operational": [0x02, 0x80, 0x81, 0x82],
+                "stopped": [0x01, 0x80, 0x81, 0x82],
+            }
+            command = self.rng.choice(transitions.get(self._nmt_state, [0x80, 0x81]))
+        else:
+            command = self.rng.choice([0x01, 0x02, 0x80, 0x81, 0x82])
         node_id = self.node_id if self.node_id is not None else self.rng.randint(0, 127)
-        return CANFrame(can_id=0x000, data=bytes([command, node_id]))
+        if command == 0x01:
+            self._nmt_state = "operational"
+        elif command == 0x02:
+            self._nmt_state = "stopped"
+        else:
+            self._nmt_state = "pre-operational"
+        return CANFrame(can_id=0x000, data=bytes([command, node_id]), meta={"nmt_state": self._nmt_state})
 
     def _generate_emcy(self) -> CANFrame:
         cob_id = self._resolve_cob_id("EMCY", 0x080)

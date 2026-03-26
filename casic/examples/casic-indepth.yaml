@@ -55,9 +55,9 @@ protocols:
     # Expected UDS response arbitration ID filter (ECU -> tester).
     uds_response_id: 0x7E8
     # Probability (0..1) to force invalid/unusual UDS service IDs.
-    uds_invalid_sid_probability: 0.35
+    uds_invalid_sid_probability: 0.25
     # Probability (0..1) to corrupt ISO-TP PCI bytes.
-    uds_malformed_pci_probability: 0.25
+    uds_malformed_pci_probability: 0.2
     # Probability (0..1) to prefer stateful UDS service progression.
     uds_sequence_awareness_probability: 0.95
     # Probability (0..1) to adapt requests after negative responses (NRC-aware).
@@ -66,6 +66,14 @@ protocols:
     uds_adaptive_sequence_probability: 0.9
     # Probability (0..1) of explicit backoff branch after NRC responses.
     uds_nrc_backoff_probability: 0.45
+    # Probability (0..1) of advertising a wrong single-frame payload length.
+    uds_single_frame_length_mismatch_probability: 0.25
+    # Probability (0..1) of advertising a wrong first-frame total length.
+    uds_first_frame_length_mismatch_probability: 0.25
+    # Probability (0..1) of injecting consecutive-frame sequence anomalies.
+    uds_consecutive_frame_sequence_anomaly_probability: 0.3
+    # Probability (0..1) of probing recovery paths after prior state/NRC outcomes.
+    uds_recovery_probe_probability: 0.45
     # Maximum application payload length before ISO-TP segmentation.
     uds_max_payload_len: 512
     # Optional request-response correlation report.
@@ -93,9 +101,15 @@ protocols:
     # Probability (0..1) to use boundary/invalid-ish PGN variants.
     j1939_invalid_pgn_probability: 0.25
     # Probability (0..1) of TP DT sequence anomalies (gap/duplicate/reorder).
-    j1939_tp_sequence_anomaly_probability: 0.3
+    j1939_tp_sequence_anomaly_probability: 0.35
     # Probability (0..1) of TP timing fault metadata injection.
-    j1939_tp_timing_fault_probability: 0.2
+    j1939_tp_timing_fault_probability: 0.25
+    # Probability (0..1) of truncating TP DT bursts before completion.
+    j1939_tp_incomplete_dt_probability: 0.25
+    # Probability (0..1) of DT/CM ordering faults in TP traffic.
+    j1939_tp_cm_dt_order_fault_probability: 0.18
+    # Probability (0..1) of advertising a TP packet count mismatch.
+    j1939_tp_packet_count_mismatch_probability: 0.22
     # Optional request-response correlation report.
     correlation_enabled: true
     # Output CSV path for J1939 correlation report.
@@ -119,11 +133,17 @@ protocols:
     # Explicit RPDO1 COB-ID override.
     rpdo1_cobid: 0x261
     # Probability (0..1) to corrupt SDO command/subindex fields.
-    canopen_invalid_sdo_probability: 0.35
+    canopen_invalid_sdo_probability: 0.4
     # Probability (0..1) to adapt SDO targeting based on observed abort codes.
-    canopen_abort_aware_probability: 0.85
+    canopen_abort_aware_probability: 0.9
     # Frames to avoid recently aborted object entries.
-    canopen_abort_blacklist_window: 20
+    canopen_abort_blacklist_window: 24
+    # Probability (0..1) of preferring NMT state-aware control transitions.
+    canopen_nmt_state_aware_probability: 0.8
+    # Probability (0..1) of generating segmented CANopen SDO download transfers.
+    canopen_segmented_sdo_probability: 0.75
+    # Probability (0..1) of preferring entries within parser-derived array/subindex bounds.
+    canopen_array_bounds_aware_probability: 0.85
     # Frame-family bias: balanced | sdo-heavy | pdo-heavy | control-heavy.
     canopen_mode_bias: sdo-heavy
     # CANopen EDS file used to load object dictionary and mapping metadata.

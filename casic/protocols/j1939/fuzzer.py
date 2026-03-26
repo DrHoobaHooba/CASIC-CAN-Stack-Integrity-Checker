@@ -7,6 +7,10 @@ from casic.core.models import CANFrame
 class J1939Fuzzer(BaseFuzzer):
     protocol_name = "j1939"
 
+    def __init__(self, config):
+        super().__init__(config)
+        self._tp_fault_epoch = 0
+
     def _with_sequence(self, frame: CANFrame, sequence: int) -> CANFrame:
         payload = bytes([sequence & 0xFF]) + frame.data[1:]
         return CANFrame(
@@ -47,6 +51,64 @@ class J1939Fuzzer(BaseFuzzer):
         right = self.rng.randint(left + 1, len(burst_frames) - 1)
         burst_frames[left], burst_frames[right] = burst_frames[right], burst_frames[left]
         return "reorder"
+
+    def _apply_incomplete_dt_sequence(self, burst_frames: list[CANFrame]) -> str | None:
+        if len(burst_frames) < 2:
+            return None
+        if self.rng.random() >= self.config.j1939_tp_incomplete_dt_probability:
+            return None
+        remove_count = self.rng.randint(1, max(1, len(burst_frames) // 2))
+        del burst_frames[-remove_count:]
+        return f"missing-tail-{remove_count}"
+
+    def _apply_packet_count_mismatch(self, cm_data: bytes, actual_count: int) -> tuple[bytes, str | None]:
+        if self.rng.random() >= self.config.j1939_tp_packet_count_mismatch_probability:
+            return cm_data, None
+
+        advertised = actual_count + self.rng.choice([-2, -1, 1, 2])
+        if advertised <= 0 or advertised == actual_count:
+            advertised = max(1, actual_count + 1)
+        mutated = bytearray(cm_data)
+        mutated[3] = advertised & 0xFF
+        return bytes(mutated), f"advertised:{advertised}|actual:{actual_count}"
+
+    def _apply_cm_dt_order_fault(
+        self,
+        cm_frame: CANFrame,
+        burst_frames: list[CANFrame],
+    ) -> tuple[CANFrame, str | None]:
+        if not burst_frames:
+            return cm_frame, None
+        if self.rng.random() >= self.config.j1939_tp_cm_dt_order_fault_probability:
+            return cm_frame, None
+
+        self._tp_fault_epoch += 1
+        fault = self.rng.choice(["dt-before-cm", "cm-mid-stream"])
+        if fault == "dt-before-cm":
+            first_dt = burst_frames.pop(0)
+            reordered = [cm_frame, *burst_frames]
+            return CANFrame(
+                can_id=first_dt.can_id,
+                data=first_dt.data,
+                is_extended_id=first_dt.is_extended_id,
+                is_fd=first_dt.is_fd,
+                timestamp=first_dt.timestamp,
+                meta={"burst": reordered, "tp_fault_epoch": self._tp_fault_epoch},
+            ), fault
+
+        split = min(1, len(burst_frames) - 1)
+        leading_dt = burst_frames[: split + 1]
+        trailing_dt = burst_frames[split + 1 :]
+        head = leading_dt[0]
+        reordered = [*leading_dt[1:], cm_frame, *trailing_dt]
+        return CANFrame(
+            can_id=head.can_id,
+            data=head.data,
+            is_extended_id=head.is_extended_id,
+            is_fd=head.is_fd,
+            timestamp=head.timestamp,
+            meta={"burst": reordered, "tp_fault_epoch": self._tp_fault_epoch},
+        ), fault
 
     def _build_can_id(self, priority: int, pgn: int, sa: int) -> int:
         return (priority << 26) | (pgn << 8) | sa
@@ -90,21 +152,31 @@ class J1939Fuzzer(BaseFuzzer):
             )
             sequence += 1
 
+        incomplete = self._apply_incomplete_dt_sequence(burst_frames)
         anomaly = self._apply_tp_sequence_anomaly(burst_frames)
+        actual_packet_count = len(burst_frames)
+        cm_data, packet_count_mismatch = self._apply_packet_count_mismatch(cm_data, actual_packet_count)
         timing_fault_ms: int | None = None
         if self.rng.random() < self.config.j1939_tp_timing_fault_probability:
             timing_fault_ms = self.rng.choice([25, 50, 100, 250])
 
-        return CANFrame(
+        cm_frame = CANFrame(
             can_id=self._build_can_id(priority, tp_cm_pgn, sa),
             data=cm_data,
             is_extended_id=True,
-            meta={
-                "burst": burst_frames,
-                "tp_sequence_anomaly": anomaly,
-                "tp_timing_fault_ms": timing_fault_ms,
-            },
         )
+        head_frame, order_fault = self._apply_cm_dt_order_fault(cm_frame, burst_frames)
+        head_frame.meta.update(
+            {
+                "burst": head_frame.meta.get("burst", burst_frames),
+                "tp_sequence_anomaly": anomaly,
+                "tp_incomplete_dt": incomplete,
+                "tp_packet_count_mismatch": packet_count_mismatch,
+                "tp_cm_dt_order_fault": order_fault,
+                "tp_timing_fault_ms": timing_fault_ms,
+            }
+        )
+        return head_frame
 
     def generate_frame(self, sequence_number: int) -> CANFrame:
         priority = self.config.j1939_priority if self.config.j1939_priority is not None else self.rng.randint(0, 7)

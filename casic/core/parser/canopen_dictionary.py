@@ -42,6 +42,7 @@ class CANopenDictionaryParser:
                 entry = self._eds_section_to_entry(section, parser[section])
                 if entry:
                     dictionary.entries.append(entry)
+                    self._capture_array_size(dictionary, entry)
 
             if section in {"1400", "1401", "1402", "1403", "1800", "1801", "1802", "1803", "1200", "1280"}:
                 cob_id = _parse_int(parser[section].get("COB-ID"))
@@ -71,6 +72,15 @@ class CANopenDictionaryParser:
             pdo_mapping=(data.get("PDOMapping", "0") in {"1", "yes", "true", "True"}),
             metadata=dict(data.items()),
         )
+
+    def _capture_array_size(self, dictionary: CANopenDictionary, entry: DictionaryEntry):
+        if entry.subindex != 0:
+            return
+        raw_value = entry.default_value or entry.metadata.get("DefaultValue")
+        count = _parse_int(raw_value)
+        if count is None or count < 0:
+            return
+        dictionary.array_sizes.setdefault(entry.index, count)
 
     def _load_xml(self, path: Path) -> CANopenDictionary:
         tree = ET.parse(path)
@@ -103,6 +113,7 @@ class CANopenDictionaryParser:
                             metadata=obj.attrib,
                         )
                     )
+                    self._capture_array_size(dictionary, dictionary.entries[-1])
                     continue
 
                 for sub in subobjects:
@@ -119,6 +130,7 @@ class CANopenDictionaryParser:
                             metadata=sub.attrib,
                         )
                     )
+                    self._capture_array_size(dictionary, dictionary.entries[-1])
 
         comm_objects = list(root.findall(".//CommunicationObject"))
         if "x" in namespaces:

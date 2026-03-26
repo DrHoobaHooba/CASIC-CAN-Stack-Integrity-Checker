@@ -1,4 +1,4 @@
-# CASIC — CAN Stack Integrity Checker
+# CASIC - CAN Stack Integrity Checker
 
 CASIC is an ISIC-style integrity fuzzing toolkit for CAN-based protocols.
 
@@ -168,9 +168,9 @@ Protocol-specific targeting flags:
 Advanced fuzzing flags:
 
 - `cansic`: `--mutation`, `--mutation-chain`, `--mutation-rate`, `--payload-min`, `--payload-max`, `--extended-prob`, `--fd-prob`, `--can-fd`, `--error-frame-prob`
-- `udsic`: `--malformed-pci-prob`, `--invalid-sid-prob`, `--sequence-awareness-prob`, `--negative-response-awareness-prob`, `--adaptive-sequence-prob`, `--nrc-backoff-prob`, `--uds-max-payload`
-- `j1939sic`: `--tp-prob`, `--invalid-pgn-prob`, `--tp-sequence-anomaly-prob`, `--tp-timing-fault-prob`
-- `cosic`: `--invalid-sdo-prob`, `--abort-aware-prob`, `--abort-blacklist-window`, `--mode-bias`
+- `udsic`: `--malformed-pci-prob`, `--invalid-sid-prob`, `--sequence-awareness-prob`, `--negative-response-awareness-prob`, `--adaptive-sequence-prob`, `--nrc-backoff-prob`, `--sf-length-mismatch-prob`, `--ff-length-mismatch-prob`, `--cf-sequence-anomaly-prob`, `--recovery-probe-prob`, `--uds-max-payload`
+- `j1939sic`: `--tp-prob`, `--invalid-pgn-prob`, `--tp-sequence-anomaly-prob`, `--tp-timing-fault-prob`, `--tp-incomplete-dt-prob`, `--tp-order-fault-prob`, `--tp-packet-count-mismatch-prob`
+- `cosic`: `--invalid-sdo-prob`, `--abort-aware-prob`, `--abort-blacklist-window`, `--nmt-state-aware-prob`, `--segmented-sdo-prob`, `--array-bounds-aware-prob`, `--mode-bias`
 
 Observability and diagnostics flags:
 
@@ -234,7 +234,7 @@ For an aggressive all-protocol profile with all fuzzing knobs enabled, use:
 casic --config ./casic/examples/casic-indepth.yaml
 ```
 
-`casic/examples/casic-indepth.yaml` enables all four protocol sections (`cansic`, `udsic`, `j1939sic`, `cosic`) and includes aggressive values for UDS adaptive/awareness controls, J1939 TP sequencing variants, and CANopen abort-aware adaptation.
+`casic/examples/casic-indepth.yaml` enables all four protocol sections (`cansic`, `udsic`, `j1939sic`, `cosic`) and includes aggressive values for UDS ISO-TP mismatch/recovery controls, J1939 TP sequencing and ordering faults, and CANopen segmented-SDO/state-aware adaptation.
 
 ### Observability YAML keys
 
@@ -263,9 +263,9 @@ j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --priority 3 --pgn 0xFEF2 
 ```bash
 cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --mutation-chain bitflip,boundary,swap --mutation-rate 0.7 --payload-min 2 --payload-max 8 --extended-prob 0.1
 cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --mutation-chain bitflip,boundary,swap --mutation-rate 0.7 --payload-min 2 --payload-max 64 --can-fd --fd-prob 0.3
-udsic -i can0 -r 1 -s rand -d 0x7E0 -p200000 -m5000 --invalid-sid-prob 0.1 --malformed-pci-prob 0.2 --sequence-awareness-prob 0.8 --negative-response-awareness-prob 0.7 --uds-max-payload 128
-j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --tp-prob 0.2 --invalid-pgn-prob 0.1
-cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x61 --invalid-sdo-prob 0.15 --mode-bias sdo-heavy --eds ./casic/examples/node.eds
+udsic -i can0 -r 1 -s rand -d 0x7E0 -p200000 -m5000 --invalid-sid-prob 0.1 --malformed-pci-prob 0.2 --sequence-awareness-prob 0.8 --cf-sequence-anomaly-prob 0.15 --recovery-probe-prob 0.2 --uds-max-payload 128
+j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --tp-prob 0.2 --invalid-pgn-prob 0.1 --tp-incomplete-dt-prob 0.1 --tp-order-fault-prob 0.05
+cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x61 --invalid-sdo-prob 0.15 --segmented-sdo-prob 0.2 --nmt-state-aware-prob 0.25 --mode-bias sdo-heavy --eds ./casic/examples/node.eds
 ```
 
 ### PCAN (Windows) examples
@@ -293,9 +293,9 @@ The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-
 - Raw CAN random IDs, extended-ID probability, explicit CAN-FD mode (`--can-fd`), CAN-FD probability (`--fd-prob`), and payload size ranges
 - Mutation operators: bitflip, nibbleflip, byteflip, boundary, truncate, expand, swap, arithmetic, structured
 - Mutation chaining and per-mutation application probability
-- UDS invalid SID, malformed ISO-TP PCI, variable payload range, multi-frame fuzzing, sequence/NRC-aware service selection, and adaptive follow-up/backoff behavior
-- J1939 PGN/priority/SA/DA fuzzing plus transport-protocol CM/DT burst sequencing, invalid-PGN probabilities, TP sequence anomaly injection, and timing fault metadata
-- CANopen dictionary-aware SDO/PDO/NMT/EMCY/SYNC/TIME generation with access-rights and limit-aware SDO behavior, PDO mapping semantics, SDO corruption probability, abort-aware SDO adaptation, and mode bias
+- UDS invalid SID, malformed ISO-TP PCI, variable payload range, multi-frame fuzzing, sequence/NRC-aware service selection, adaptive follow-up/backoff behavior, ISO-TP length mismatches, consecutive-frame anomalies, and recovery probes
+- J1939 PGN/priority/SA/DA fuzzing plus transport-protocol CM/DT burst sequencing, invalid-PGN probabilities, TP sequence anomaly injection, incomplete DT bursts, CM/DT ordering faults, packet-count mismatches, and timing fault metadata
+- CANopen dictionary-aware SDO/PDO/NMT/EMCY/SYNC/TIME generation with access-rights and limit-aware SDO behavior, segmented download bursts, NMT state-aware transitions, parser-backed array/subindex bounds awareness, PDO mapping semantics, SDO corruption probability, abort-aware SDO adaptation, and mode bias
 
 ## Replay Support
 
@@ -358,7 +358,7 @@ For unsupported protocols (`cansic`, `cosic`), a metadata-only correlation artif
 
 This roadmap is based on what is already implemented in the current codebase and highlights the next engineering priorities.
 
-### Current baseline (v0.0.5)
+### Current baseline (v0.0.6)
 
 - Multi-protocol fuzzers available: Raw CAN (`cansic`), UDS (`udsic`), J1939 (`j1939sic`), CANopen (`cosic`)
 - Unified YAML runner (`casic --config`) with per-protocol enable/disable behavior
@@ -366,10 +366,15 @@ This roadmap is based on what is already implemented in the current codebase and
 - CANopen EDS/XDD/XDC dictionary parsing with dictionary-aware generation
 - UDS sequence-aware and negative-response-aware request generation controls
 - UDS adaptive sequencing and NRC backoff controls
+- UDS ISO-TP single-frame and first-frame length mismatch variants
+- UDS consecutive-frame sequence anomaly and recovery-probe variants
 - J1939 transport-protocol CM/DT multi-packet burst sequencing
 - J1939 TP sequence anomaly and timing-fault variant generation
+- J1939 TP incomplete DT, CM/DT ordering fault, and packet-count mismatch variants
 - CANopen dictionary constraint usage in generation (access rights, limits, PDO mapping semantics)
 - CANopen abort-aware response adaptation with temporary object blacklist window
+- CANopen segmented SDO download generation and NMT state-aware control transitions
+- CANopen parser-backed array/subindex bounds-aware selection behavior
 - Dry-send fallback when `python-can` backend is unavailable
 - Runtime validation for probability ranges and payload bounds with explicit error messages
 - `rate_mode=0` timer-based pacing in the engine loop (`rate_mode=1` unchanged for high-speed)
@@ -380,40 +385,24 @@ This roadmap is based on what is already implemented in the current codebase and
 - **Request/response correlation CSV** reporting with latency percentiles (UDS and J1939)
 - **Fixed** aggregate summary generation in YAML multi-protocol orchestration
 
-### Next milestones (near term)
+### Development roadmap (v0.0.7+)
 
-1. Stability and quality
-- Expand test coverage around protocol edge cases and replay compatibility
-- Add CI matrix for Windows/Linux with and without optional CAN backend
-- Introduce regression tests for example configs and CLI aliases
-- Add integration tests for YAML multi-protocol orchestration
+**v0.0.7** — Configuration experience and usability
+- YAML schema validation with clear, actionable error messages
+- Preset profiles (discovery-focused, conservative, aggressive)
+- Dry-run validation mode (parse and verify config without sending frames)
+- Enhanced diagnostics for troubleshooting config issues
 
-2. Configuration experience
-- Add YAML schema validation and clearer config-time diagnostics
-- Add reusable preset profiles for aggressive, balanced, and protocol-focused campaigns
-- Add a dry-run config validation mode to verify setup before transmitting frames
+**v0.0.8** — Safety guardrails and control-plane
+- Send budget limits and stop conditions (max frames, time limits, error thresholds)
+- Allow/deny ID ranges to prevent sensitive traffic
+- Campaign checkpointing and resumable runs
+- Safe defaults with clear warnings for destructive operations
 
-### Mid-term milestones
-
-1. Stability and quality
-- Expand test coverage around protocol edge cases and replay compatibility
-- Add CI matrix for Windows/Linux with and without optional CAN backend
-- Introduce regression tests for example configs and CLI aliases
-
-2. Configuration experience
-- Add YAML schema validation and clearer config-time diagnostics
-- Add reusable preset profiles for aggressive, balanced, and protocol-focused campaigns
-- Add a dry-run config validation mode to verify setup before transmitting frames
-
-### Longer-term goals
-
-1. Safety and control-plane features
-- Add optional guardrails (send budget, stop conditions, allow/deny ID ranges)
-- Add campaign checkpointing and resumable fuzz runs
-
-2. Integration and reporting
-- Export machine-readable artifacts for CI/security pipelines
-- Add protocol-specific post-run analysis helpers for triage and defect clustering
+**v0.0.9+** — Stability infrastructure and reporting
+- CI/CD matrix (Windows/Linux, with/without optional CAN backend)
+- Regression tests and integration tests for multi-protocol workflows
+- Advanced analysis helpers for triage, defect clustering, and post-run correlation
 
 ### How contributors can align work
 

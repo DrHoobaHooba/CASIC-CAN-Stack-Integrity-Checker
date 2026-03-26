@@ -87,14 +87,40 @@ def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
         ),
         uds_adaptive_sequence_probability=getattr(args, "uds_adaptive_sequence_probability", 0.0),
         uds_nrc_backoff_probability=getattr(args, "uds_nrc_backoff_probability", 0.0),
+        uds_single_frame_length_mismatch_probability=getattr(
+            args,
+            "uds_single_frame_length_mismatch_probability",
+            0.0,
+        ),
+        uds_first_frame_length_mismatch_probability=getattr(
+            args,
+            "uds_first_frame_length_mismatch_probability",
+            0.0,
+        ),
+        uds_consecutive_frame_sequence_anomaly_probability=getattr(
+            args,
+            "uds_consecutive_frame_sequence_anomaly_probability",
+            0.0,
+        ),
+        uds_recovery_probe_probability=getattr(args, "uds_recovery_probe_probability", 0.0),
         uds_max_payload_len=getattr(args, "uds_max_payload_len", 50),
         j1939_tp_probability=getattr(args, "j1939_tp_probability", 0.1),
         j1939_invalid_pgn_probability=getattr(args, "j1939_invalid_pgn_probability", 0.0),
         j1939_tp_sequence_anomaly_probability=getattr(args, "j1939_tp_sequence_anomaly_probability", 0.0),
         j1939_tp_timing_fault_probability=getattr(args, "j1939_tp_timing_fault_probability", 0.0),
+        j1939_tp_incomplete_dt_probability=getattr(args, "j1939_tp_incomplete_dt_probability", 0.0),
+        j1939_tp_cm_dt_order_fault_probability=getattr(args, "j1939_tp_cm_dt_order_fault_probability", 0.0),
+        j1939_tp_packet_count_mismatch_probability=getattr(
+            args,
+            "j1939_tp_packet_count_mismatch_probability",
+            0.0,
+        ),
         canopen_invalid_sdo_probability=getattr(args, "canopen_invalid_sdo_probability", 0.0),
         canopen_abort_aware_probability=getattr(args, "canopen_abort_aware_probability", 0.0),
         canopen_abort_blacklist_window=getattr(args, "canopen_abort_blacklist_window", 5),
+        canopen_nmt_state_aware_probability=getattr(args, "canopen_nmt_state_aware_probability", 0.0),
+        canopen_segmented_sdo_probability=getattr(args, "canopen_segmented_sdo_probability", 0.0),
+        canopen_array_bounds_aware_probability=getattr(args, "canopen_array_bounds_aware_probability", 0.0),
         canopen_mode_bias=getattr(args, "canopen_mode_bias", None),
     )
 
@@ -164,6 +190,34 @@ def main_udsic(argv: list[str] | None = None):
         default=0.0,
         help="Probability of backoff behavior after negative responses",
     )
+    parser.add_argument(
+        "--sf-length-mismatch-prob",
+        dest="uds_single_frame_length_mismatch_probability",
+        type=float,
+        default=0.0,
+        help="Probability of advertising a wrong ISO-TP single-frame payload length",
+    )
+    parser.add_argument(
+        "--ff-length-mismatch-prob",
+        dest="uds_first_frame_length_mismatch_probability",
+        type=float,
+        default=0.0,
+        help="Probability of advertising a wrong ISO-TP first-frame total length",
+    )
+    parser.add_argument(
+        "--cf-sequence-anomaly-prob",
+        dest="uds_consecutive_frame_sequence_anomaly_probability",
+        type=float,
+        default=0.0,
+        help="Probability of injecting ISO-TP consecutive-frame sequence anomalies",
+    )
+    parser.add_argument(
+        "--recovery-probe-prob",
+        dest="uds_recovery_probe_probability",
+        type=float,
+        default=0.0,
+        help="Probability of probing recovery paths after prior UDS state or NRC events",
+    )
     parser.add_argument("--uds-max-payload", dest="uds_max_payload_len", type=int, default=50)
     args = parser.parse_args(argv)
     config = _config_from_args(args)
@@ -194,6 +248,27 @@ def main_j1939sic(argv: list[str] | None = None):
         type=float,
         default=0.0,
         help="Probability of J1939 TP timing fault metadata injection",
+    )
+    parser.add_argument(
+        "--tp-incomplete-dt-prob",
+        dest="j1939_tp_incomplete_dt_probability",
+        type=float,
+        default=0.0,
+        help="Probability of truncating TP DT bursts before completion",
+    )
+    parser.add_argument(
+        "--tp-order-fault-prob",
+        dest="j1939_tp_cm_dt_order_fault_probability",
+        type=float,
+        default=0.0,
+        help="Probability of emitting DT/CM ordering faults in TP traffic",
+    )
+    parser.add_argument(
+        "--tp-packet-count-mismatch-prob",
+        dest="j1939_tp_packet_count_mismatch_probability",
+        type=float,
+        default=0.0,
+        help="Probability of advertising a TP packet count that mismatches the emitted DT burst",
     )
     args = parser.parse_args(argv)
     config = _config_from_args(args)
@@ -227,6 +302,27 @@ def main_cosic(argv: list[str] | None = None):
         type=int,
         default=5,
         help="Number of frames to avoid recently aborted CANopen objects",
+    )
+    parser.add_argument(
+        "--nmt-state-aware-prob",
+        dest="canopen_nmt_state_aware_probability",
+        type=float,
+        default=0.0,
+        help="Probability of preferring CANopen NMT state-aware transitions",
+    )
+    parser.add_argument(
+        "--segmented-sdo-prob",
+        dest="canopen_segmented_sdo_probability",
+        type=float,
+        default=0.0,
+        help="Probability of generating segmented CANopen SDO download transfers",
+    )
+    parser.add_argument(
+        "--array-bounds-aware-prob",
+        dest="canopen_array_bounds_aware_probability",
+        type=float,
+        default=0.0,
+        help="Probability of preferring CANopen entries within parser-derived array/subindex bounds",
     )
     parser.add_argument(
         "--mode-bias",

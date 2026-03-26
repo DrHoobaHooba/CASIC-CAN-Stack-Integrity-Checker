@@ -64,6 +64,16 @@ def _build_common(protocol_name: str, global_cfg: dict[str, Any], protocol_cfg: 
         ),
         uds_adaptive_sequence_probability=float(merged.get("uds_adaptive_sequence_probability", 0.0)),
         uds_nrc_backoff_probability=float(merged.get("uds_nrc_backoff_probability", 0.0)),
+        uds_single_frame_length_mismatch_probability=float(
+            merged.get("uds_single_frame_length_mismatch_probability", 0.0)
+        ),
+        uds_first_frame_length_mismatch_probability=float(
+            merged.get("uds_first_frame_length_mismatch_probability", 0.0)
+        ),
+        uds_consecutive_frame_sequence_anomaly_probability=float(
+            merged.get("uds_consecutive_frame_sequence_anomaly_probability", 0.0)
+        ),
+        uds_recovery_probe_probability=float(merged.get("uds_recovery_probe_probability", 0.0)),
         uds_max_payload_len=int(merged.get("uds_max_payload_len", 50)),
         j1939_tp_probability=float(merged.get("j1939_tp_probability", 0.1)),
         j1939_invalid_pgn_probability=float(merged.get("j1939_invalid_pgn_probability", 0.0)),
@@ -71,9 +81,23 @@ def _build_common(protocol_name: str, global_cfg: dict[str, Any], protocol_cfg: 
             merged.get("j1939_tp_sequence_anomaly_probability", 0.0)
         ),
         j1939_tp_timing_fault_probability=float(merged.get("j1939_tp_timing_fault_probability", 0.0)),
+        j1939_tp_incomplete_dt_probability=float(merged.get("j1939_tp_incomplete_dt_probability", 0.0)),
+        j1939_tp_cm_dt_order_fault_probability=float(
+            merged.get("j1939_tp_cm_dt_order_fault_probability", 0.0)
+        ),
+        j1939_tp_packet_count_mismatch_probability=float(
+            merged.get("j1939_tp_packet_count_mismatch_probability", 0.0)
+        ),
         canopen_invalid_sdo_probability=float(merged.get("canopen_invalid_sdo_probability", 0.0)),
         canopen_abort_aware_probability=float(merged.get("canopen_abort_aware_probability", 0.0)),
         canopen_abort_blacklist_window=int(merged.get("canopen_abort_blacklist_window", 5)),
+        canopen_nmt_state_aware_probability=float(
+            merged.get("canopen_nmt_state_aware_probability", 0.0)
+        ),
+        canopen_segmented_sdo_probability=float(merged.get("canopen_segmented_sdo_probability", 0.0)),
+        canopen_array_bounds_aware_probability=float(
+            merged.get("canopen_array_bounds_aware_probability", 0.0)
+        ),
         canopen_mode_bias=str(merged.get("canopen_mode_bias")) if merged.get("canopen_mode_bias") is not None else None,
     )
 

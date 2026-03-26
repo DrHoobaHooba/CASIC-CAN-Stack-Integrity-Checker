@@ -63,6 +63,21 @@ def test_cosic_rejects_invalid_abort_blacklist_window():
         main_cosic(["-i", "can0", "-p", "1", "--abort-blacklist-window", "0"])
 
 
+def test_udsic_rejects_out_of_range_cf_sequence_anomaly_probability():
+    with pytest.raises(ValueError, match="uds_consecutive_frame_sequence_anomaly_probability"):
+        main_udsic(["-i", "can0", "-p", "1", "--cf-sequence-anomaly-prob", "1.2"])
+
+
+def test_j1939_rejects_out_of_range_tp_order_fault_probability():
+    with pytest.raises(ValueError, match="j1939_tp_cm_dt_order_fault_probability"):
+        main_j1939sic(["-i", "can0", "-p", "1", "--tp-order-fault-prob", "-0.1"])
+
+
+def test_cosic_rejects_out_of_range_segmented_sdo_probability():
+    with pytest.raises(ValueError, match="canopen_segmented_sdo_probability"):
+        main_cosic(["-i", "can0", "-p", "1", "--segmented-sdo-prob", "1.1"])
+
+
 def test_cli_default_observability_outputs_are_disabled(tmp_path: Path):
     summary_file = tmp_path / "summary.json"
     correlation_file = tmp_path / "corr.csv"

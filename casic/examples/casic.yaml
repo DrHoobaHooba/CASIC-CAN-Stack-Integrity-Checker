@@ -67,6 +67,14 @@ protocols:
     uds_adaptive_sequence_probability: 0.25
     # Probability of explicit backoff branch after NRC responses.
     uds_nrc_backoff_probability: 0.2
+    # Probability of advertising the wrong single-frame payload length.
+    uds_single_frame_length_mismatch_probability: 0.02
+    # Probability of advertising the wrong first-frame total length.
+    uds_first_frame_length_mismatch_probability: 0.02
+    # Probability of injecting consecutive-frame sequence anomalies.
+    uds_consecutive_frame_sequence_anomaly_probability: 0.03
+    # Probability of probing recovery paths after prior state/NRC outcomes.
+    uds_recovery_probe_probability: 0.15
     # Max UDS payload before/with segmentation.
     uds_max_payload_len: 96
     # Optional request-response correlation report.
@@ -95,6 +103,12 @@ protocols:
     j1939_tp_sequence_anomaly_probability: 0.03
     # Probability of TP timing fault metadata injection.
     j1939_tp_timing_fault_probability: 0.03
+    # Probability of truncating TP DT bursts before completion.
+    j1939_tp_incomplete_dt_probability: 0.04
+    # Probability of DT/CM ordering faults in TP traffic.
+    j1939_tp_cm_dt_order_fault_probability: 0.03
+    # Probability of advertising a TP packet count that mismatches emitted DT frames.
+    j1939_tp_packet_count_mismatch_probability: 0.03
     # Optional request-response correlation report.
     correlation_enabled: false
     # Output CSV path for J1939 correlation report.
@@ -115,6 +129,12 @@ protocols:
     canopen_abort_aware_probability: 0.35
     # Frames to avoid recently aborted object entries.
     canopen_abort_blacklist_window: 8
+    # Probability of preferring NMT state-aware control transitions.
+    canopen_nmt_state_aware_probability: 0.25
+    # Probability of generating segmented CANopen SDO download transfers.
+    canopen_segmented_sdo_probability: 0.1
+    # Probability of preferring entries within parser-derived array/subindex bounds.
+    canopen_array_bounds_aware_probability: 0.35
     # Traffic family bias: balanced | sdo-heavy | pdo-heavy | control-heavy.
     canopen_mode_bias: balanced
     # Replay output path for sent CANopen frames.

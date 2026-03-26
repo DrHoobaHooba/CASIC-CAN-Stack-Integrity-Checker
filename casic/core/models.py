@@ -69,14 +69,24 @@ class FuzzConfig:
     uds_negative_response_awareness_probability: float = 0.6
     uds_adaptive_sequence_probability: float = 0.0
     uds_nrc_backoff_probability: float = 0.0
+    uds_single_frame_length_mismatch_probability: float = 0.0
+    uds_first_frame_length_mismatch_probability: float = 0.0
+    uds_consecutive_frame_sequence_anomaly_probability: float = 0.0
+    uds_recovery_probe_probability: float = 0.0
     uds_max_payload_len: int = 50
     j1939_tp_probability: float = 0.1
     j1939_invalid_pgn_probability: float = 0.0
     j1939_tp_sequence_anomaly_probability: float = 0.0
     j1939_tp_timing_fault_probability: float = 0.0
+    j1939_tp_incomplete_dt_probability: float = 0.0
+    j1939_tp_cm_dt_order_fault_probability: float = 0.0
+    j1939_tp_packet_count_mismatch_probability: float = 0.0
     canopen_invalid_sdo_probability: float = 0.0
     canopen_abort_aware_probability: float = 0.0
     canopen_abort_blacklist_window: int = 5
+    canopen_nmt_state_aware_probability: float = 0.0
+    canopen_segmented_sdo_probability: float = 0.0
+    canopen_array_bounds_aware_probability: float = 0.0
     canopen_mode_bias: str | None = None
 
     def __post_init__(self):
@@ -125,6 +135,19 @@ class FuzzConfig:
         )
         _validate_probability("uds_adaptive_sequence_probability", self.uds_adaptive_sequence_probability)
         _validate_probability("uds_nrc_backoff_probability", self.uds_nrc_backoff_probability)
+        _validate_probability(
+            "uds_single_frame_length_mismatch_probability",
+            self.uds_single_frame_length_mismatch_probability,
+        )
+        _validate_probability(
+            "uds_first_frame_length_mismatch_probability",
+            self.uds_first_frame_length_mismatch_probability,
+        )
+        _validate_probability(
+            "uds_consecutive_frame_sequence_anomaly_probability",
+            self.uds_consecutive_frame_sequence_anomaly_probability,
+        )
+        _validate_probability("uds_recovery_probe_probability", self.uds_recovery_probe_probability)
         _validate_probability("j1939_tp_probability", self.j1939_tp_probability)
         _validate_probability("j1939_invalid_pgn_probability", self.j1939_invalid_pgn_probability)
         _validate_probability(
@@ -132,8 +155,29 @@ class FuzzConfig:
             self.j1939_tp_sequence_anomaly_probability,
         )
         _validate_probability("j1939_tp_timing_fault_probability", self.j1939_tp_timing_fault_probability)
+        _validate_probability("j1939_tp_incomplete_dt_probability", self.j1939_tp_incomplete_dt_probability)
+        _validate_probability(
+            "j1939_tp_cm_dt_order_fault_probability",
+            self.j1939_tp_cm_dt_order_fault_probability,
+        )
+        _validate_probability(
+            "j1939_tp_packet_count_mismatch_probability",
+            self.j1939_tp_packet_count_mismatch_probability,
+        )
         _validate_probability("canopen_invalid_sdo_probability", self.canopen_invalid_sdo_probability)
         _validate_probability("canopen_abort_aware_probability", self.canopen_abort_aware_probability)
+        _validate_probability(
+            "canopen_nmt_state_aware_probability",
+            self.canopen_nmt_state_aware_probability,
+        )
+        _validate_probability(
+            "canopen_segmented_sdo_probability",
+            self.canopen_segmented_sdo_probability,
+        )
+        _validate_probability(
+            "canopen_array_bounds_aware_probability",
+            self.canopen_array_bounds_aware_probability,
+        )
 
         _validate_int_range("j1939_priority", self.j1939_priority, 0, 7)
         _validate_int_range("j1939_sa", self.j1939_sa, 0, 0xFF)
@@ -168,6 +212,7 @@ class CANopenDictionary:
     entries: list[DictionaryEntry] = field(default_factory=list)
     cob_ids: dict[str, int] = field(default_factory=dict)
     pdo_mappings: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
+    array_sizes: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

@@ -71,6 +71,36 @@ def test_j1939_tp_anomaly_and_timing_metadata_present():
     assert frame.meta.get("tp_timing_fault_ms") in {25, 50, 100, 250}
 
 
+def test_j1939_tp_incomplete_and_packet_count_mismatch_metadata_present():
+    cfg = _build_config(tp_probability=1.0)
+    cfg.j1939_tp_incomplete_dt_probability = 1.0
+    cfg.j1939_tp_packet_count_mismatch_probability = 1.0
+
+    fuzzer = J1939Fuzzer(cfg)
+    frame = fuzzer.generate_frame(1)
+
+    assert frame.meta.get("tp_incomplete_dt") is not None
+    assert frame.meta.get("tp_packet_count_mismatch") is not None
+    advertised_count = frame.data[3]
+    actual_count = len(frame.meta.get("burst", []))
+    assert advertised_count != actual_count
+
+
+def test_j1939_tp_order_fault_can_emit_dt_before_cm():
+    cfg = _build_config(tp_probability=1.0)
+    cfg.j1939_tp_cm_dt_order_fault_probability = 1.0
+
+    fuzzer = J1939Fuzzer(cfg)
+    frame = fuzzer.generate_frame(1)
+
+    assert frame.meta.get("tp_cm_dt_order_fault") in {"dt-before-cm", "cm-mid-stream"}
+    if frame.meta.get("tp_cm_dt_order_fault") == "dt-before-cm":
+        assert _extract_pf(frame.can_id) == 0xEB
+        burst = frame.meta.get("burst", [])
+        assert burst
+        assert _extract_pf(burst[0].can_id) == 0xEC
+
+
 def test_j1939_correlation_uses_pgn_and_address_context(tmp_path: Path):
     logger = PacketLogger()
     request_id = (3 << 26) | (0xEA << 16) | (0xFE << 8) | 0x80
