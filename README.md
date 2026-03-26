@@ -8,6 +8,23 @@ CASIC is an ISIC-style integrity fuzzing toolkit for CAN-based protocols.
 - Review, test, and validate behavior in your target environment before production use.
 - Fuzzing can destabilize devices and networks; use only in authorized and controlled test setups.
 
+## Fuzzing Basics
+
+**This is a protocol mutation fuzzer.** It generates malformed/unexpected frames to find stack violations. Here's what to expect:
+
+- **Objective**: Trigger crashes, hangs, resource exhaustion, or state violations in a firmware stack
+- **Start small**: Run 10k–100k packets first to check for immediate crashes
+- **Scale up**: Once stable, increase to millions of packets with high mutation rates
+- **Monitor**: Watch logs and device response times—timeouts or errors suggest vulnerabilities
+- **Interpret correlation**: High mismatch rate → likely protocol state issues; timeout → deadlock/hang risk
+- **Success**: A crash or unrecoverable state in the target firmware indicates a finding
+
+**Targeting tips**:
+- For CANopen: Start with `cosic` and dictionary-aware SDO fuzzing
+- For UDS: Focus on `udsic` with sequence-awareness enabled to stress multi-frame handling
+- For J1939: Use `j1939sic` with TP timing faults to test transport robustness
+- For raw CAN: Use `cansic` as a baseline to find basic acceptance filter issues
+
 ## Protocol Tools
 
 - `cansic`: Raw CAN fuzzing
@@ -288,6 +305,16 @@ You can also pass `-i PCAN_USBBUS1` directly on Windows; CASIC auto-selects the 
 
 The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-IDs, and basic constraints.
 
+**Finding dictionary files**:
+- Check your device manufacturer's website under "technical documentation" or "device files"
+- Common sources: PEAK System Technik, Vector Informatik, device manuals
+- Validate format: EDS (INI-style plain text), XDD/XDC (XML files)
+
+**Common parsing issues**:
+- Missing data type definitions → parser logs warnings but continues
+- Malformed PDO mappings → check dictionary file for syntax errors
+- Limited data types → not all vendor extensions are supported
+
 ## Fuzzing Features
 
 - Raw CAN random IDs, extended-ID probability, explicit CAN-FD mode (`--can-fd`), CAN-FD probability (`--fd-prob`), and payload size ranges
@@ -311,6 +338,13 @@ Replay captured sequence:
 cosic -i can0 -r 1 -s rand -d 0x600 -p1 -m1000 --replay ./replay_cosic.jsonl
 ```
 
+**Reproducibility**: Use `--seed <N>` with the same config to reproduce identical fuzz sequences. To replay a specific campaign:
+
+```bash
+casic --config ./casic/examples/casic.yaml --seed 12345
+# Re-run the same config with the same seed → identical sequence
+```
+
 Replay records are additive and backward compatible. New records include optional metadata fields:
 
 - `run_id` deterministic identifier derived from protocol plus canonicalized config
@@ -318,6 +352,8 @@ Replay records are additive and backward compatible. New records include optiona
 - `profile_name` optional campaign/profile label
 
 Older JSONL records without these fields remain readable.
+
+**Known limitation (v0.0.6)**: Replay does not restore UDS session state or J1939 connection state; exact response patterns may differ. This will be fixed in v0.0.8.
 
 ## Observability Outputs
 
@@ -354,36 +390,59 @@ The report appends summary metrics:
 
 For unsupported protocols (`cansic`, `cosic`), a metadata-only correlation artifact is emitted when correlation is enabled.
 
-## Development Roadmap
+### Interpreting Results
 
-This roadmap is based on what is already implemented in the current codebase and highlights the next engineering priorities.
+**Match rate**: Shows how many requests got responses
+- ≥ 90% → Target is stable; fuzz harder
+- 50–90% → Some protocol violations detected
+- < 50% → Target is unstable; may have found critical bugs
 
-### Current baseline (v0.0.6)
+**Latency percentiles** (`p50_ms`, `p90_ms`, `p99_ms`):
+- Sudden spike in p99 → timeout or congestion detected
+- Consistent high latency → potential firmware hang or backoff
+- Usually: p50 < 10ms, p99 < 100ms on modern hardware
 
-- Multi-protocol fuzzers available: Raw CAN (`cansic`), UDS (`udsic`), J1939 (`j1939sic`), CANopen (`cosic`)
-- Unified YAML runner (`casic --config`) with per-protocol enable/disable behavior
-- Replay capture and replay execution (`--save-replay`, `--replay`)
-- CANopen EDS/XDD/XDC dictionary parsing with dictionary-aware generation
-- UDS sequence-aware and negative-response-aware request generation controls
-- UDS adaptive sequencing and NRC backoff controls
-- UDS ISO-TP single-frame and first-frame length mismatch variants
-- UDS consecutive-frame sequence anomaly and recovery-probe variants
-- J1939 transport-protocol CM/DT multi-packet burst sequencing
-- J1939 TP sequence anomaly and timing-fault variant generation
-- J1939 TP incomplete DT, CM/DT ordering fault, and packet-count mismatch variants
-- CANopen dictionary constraint usage in generation (access rights, limits, PDO mapping semantics)
-- CANopen abort-aware response adaptation with temporary object blacklist window
-- CANopen segmented SDO download generation and NMT state-aware control transitions
-- CANopen parser-backed array/subindex bounds-aware selection behavior
-- Dry-send fallback when `python-can` backend is unavailable
-- Runtime validation for probability ranges and payload bounds with explicit error messages
-- `rate_mode=0` timer-based pacing in the engine loop (`rate_mode=1` unchanged for high-speed)
-- Legacy compatibility flags (`-F/-V/-I`) removed to keep CASIC CLI protocol-specific and explicit
-- **Deterministic run IDs** based on protocol + canonicalized config hash
-- **Run summary JSON** generation with per-protocol counters and durations
-- **Replay metadata enrichment** with run_id, seed, profile_name (backward compatible)
-- **Request/response correlation CSV** reporting with latency percentiles (UDS and J1939)
-- **Fixed** aggregate summary generation in YAML multi-protocol orchestration
+**Unmatched requests**
+- Small number: Normal in high-fuzz scenarios
+- Large number or increasing: Suggests state machine corruption
+
+**For UDS**: Check if `invalid-sid-prob` or `malformed-pci-prob` correlates with unmatched responses → indicates stack does not recover from protocol errors
+
+**For J1939**: Look for TP sequence anomaly patterns; if BAM logic breaks, expect connection timeouts
+
+## Troubleshooting
+
+**Interface not found**:
+```bash
+cansic -i can0 -r 1 -s rand -d rand -p100 -m10
+# Error: can0 not found
+```
+On Linux: `ip link show` to verify interface exists, then `sudo ip link set can0 up type can bitrate 500000`
+
+**Permission denied (SocketCAN)**:
+```bash
+sudo cansic -i can0 -r 1 -s rand -d rand -p100 -m10
+```
+On Linux: SocketCAN requires root or group membership in `can` group
+
+**PCAN driver not found (Windows)**:
+- Ensure PEAK PCAN-Basic drivers are installed from https://www.peak-system.com/
+- Check Device Manager → Universal Serial Bus controllers for PCAN device
+- Restart Python/terminal after driver installation
+
+**No frames received (dry-send mode)**:
+```bash
+Warning: python-can not installed or interface unavailable. Running in dry-send mode.
+```
+- Install `python-can`: `pip install -e .[can]`
+- Or validate interface is correctly specified: `cansic -i <your_interface> -r 1 -s rand -d rand -p100 -m10`
+
+**Parser errors (CANopen)**:
+```bash
+cosic -i can0 -r 1 -s rand -d 0x600 -p100 -m10 --eds ./node.eds
+# Warning: Missing attribute 'DataType' in object 0x1000
+```
+This is normal; parser uses defaults and logs warnings. If critical constraints are missing, dictionary file may be incomplete.
 
 ## Development Roadmap
 
