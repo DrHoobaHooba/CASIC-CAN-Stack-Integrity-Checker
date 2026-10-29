@@ -1,0 +1,17 @@
+VERSION "Synthetic CASIC parser example; not a device specification"
+
+NS_ :
+    BA_DEF_
+    BA_
+
+BS_:
+BU_: SyntheticNode
+
+BO_ 2566845242 SyntheticStatus: 8 SyntheticNode
+ SG_ SyntheticSpeed : 0|16@1+ (0.25,0) [0|16000] "rpm" Vector__XXX
+ SG_ SyntheticTemperature : 16|8@1+ (1,-40) [-40|210] "degC" Vector__XXX
+
+BA_DEF_ BO_ "VFrameFormat" ENUM "StandardCAN","ExtendedCAN","reserved","J1939PG";
+BA_DEF_ SG_ "SPN" INT 0 524287;
+BA_ "VFrameFormat" BO_ 2566845242 3;
+BA_ "SPN" SG_ 2566845242 SyntheticSpeed 4321;

@@ -28,7 +28,7 @@ def test_cosic_cli_with_eds():
             "-m",
             "1",
             "--eds",
-            str(Path("casic/examples/node.eds")),
+            str(Path("casic/examples/canopen/node.eds")),
         ]
     )
 

@@ -155,6 +155,7 @@ casic --config ./casic/examples/casic.yaml
 Common flags:
 
 - `-i <interface>`
+- `--bitrate <bit/s>` (default 500000; applied to PCAN, while SocketCAN configuration remains external)
 - `-r <rate mode>`
 - `-s <source mode>`
 - `-d <destination>`
@@ -179,7 +180,7 @@ Runtime and validation notes:
 Protocol-specific targeting flags:
 
 - `cosic`: `--node-id`, `--sdo-rx`, `--sdo-tx`, `--tpdo1`, `--rpdo1`
-- `udsic`: `--req-id`, `--resp-id`
+- `udsic`: `--req-id`, `--resp-id`, `--extended-id`
 - `j1939sic`: `--priority`, `--pgn`, `--sa`, `--da`
 
 Advanced fuzzing flags:
@@ -198,6 +199,14 @@ Observability and diagnostics flags:
 
 Targeting precedence:
 
+YAML accepts `bitrate` globally or per protocol (integer, 10000..1000000 bit/s).
+UDS automatically uses extended CAN frames for IDs above `0x7FF`; set
+`uds_extended_id: true` (CLI `--extended-id`) to force extended format for smaller
+numeric identifiers too. Both first/single frames and consecutive-frame bursts use
+that format, and response-ID filtering checks the format as well as the numeric ID.
+This is CAN identifier support, not a full flow-controlled ISO-TP client, ECU state
+restoration, or automatic application of ODX communication parameters.
+
 - Explicit protocol overrides win (`--sdo-rx`, `--req-id`, `--da`, etc.)
 - Then protocol-derived values (for CANopen `--node-id`, for J1939 `-d` as DA fallback)
 - Then dictionary/default/random fuzz values
@@ -214,7 +223,7 @@ Notes:
 cansic   -i can0 -r 1 -s rand -d rand       -p1000000 -m5000 --seed 42
 udsic    -i can0 -r 1 -s rand -d 0x7E0      -p1000000 -m10000
 j1939sic -i can0 -r 1 -s rand -d 0x18FF50E5 -p10000000 -m5000
-cosic    -i can0 -r 1 -s rand -d 0x600      -p1000000 -m5000 --eds ./casic/examples/node.eds
+cosic    -i can0 -r 1 -s rand -d 0x600      -p1000000 -m5000 --eds ./casic/examples/canopen/node.eds
 ```
 
 ### YAML configuration example
@@ -242,16 +251,41 @@ protocols:
   cosic:
     enabled: true
     node_id: 0x05
-    eds: ./casic/examples/node.eds
+    eds: ./casic/examples/canopen/node.eds
 ```
 
-For an aggressive all-protocol profile with all fuzzing knobs enabled, use:
+For broad classic-CAN stress with mixed random/feedback generation, use:
 
 ```bash
 casic --config ./casic/examples/casic-indepth.yaml
 ```
 
-`casic/examples/casic-indepth.yaml` enables all four protocol sections (`cansic`, `udsic`, `j1939sic`, `cosic`) and includes aggressive values for UDS ISO-TP mismatch/recovery controls, J1939 TP sequencing and ordering faults, and CANopen segmented-SDO/state-aware adaptation.
+`casic/examples/casic-indepth.yaml` is a broad **classic-CAN** stress example,
+not a full-conformance test or a device-health verdict. It enables all four
+protocol sections with one million primary generations each, response/failure
+capture, and mixed random/feedback-guided generation. Replace the synthetic
+IDs, bitrate, and CANopen dictionary, and select only protocols supported on the
+connected port before use.
+
+The profile mixes standard/extended raw IDs and 0..8-byte classic payloads.
+FD and raw `expand` mutation are disabled because the current PCAN path does not
+configure FD and expansion happens after payload sizing. UDS uses up to 24 random
+extra bytes to exercise both single-frame and short multi-frame paths. For
+long-burst/CF-sequence-wrap testing, run a separate campaign with
+`uds_max_payload_len: 512`; that setting makes single-frame candidates rare.
+J1939 varies PGNs/priorities and mixes single messages with BAM/RTS-like bursts.
+CANopen mixes existing frame families and expedited/segmented SDO generation
+with observed-heartbeat and abort feedback.
+
+Bursts mean the total frame count exceeds the configured primary count.
+Sent/accepted-received frames are still retained in memory, replay serialization
+adds memory overhead, and correlation matching can be expensive at million-scale
+counts. Plan RAM/disk capacity and archive outputs between runs/seeds.
+The profile cannot add missing flow-controlled transport handshakes, applied TP
+timing faults (the timing knob currently records metadata only), full CANopen
+array/PDO mapping coverage from the tiny synthetic EDS, or active before/after
+health confirmation. Offline tests verify generated-path coverage, not live
+delivery, device robustness, or standards conformance.
 
 ### Observability YAML keys
 
@@ -269,8 +303,8 @@ Default behavior is unchanged unless these are explicitly enabled.
 ### Deterministic node/address targeting examples
 
 ```bash
-cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x05 --eds ./casic/examples/node.eds
-cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --sdo-rx 0x605 --tpdo1 0x185 --eds ./casic/examples/node.eds
+cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x05 --eds ./casic/examples/canopen/node.eds
+cosic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --sdo-rx 0x605 --tpdo1 0x185 --eds ./casic/examples/canopen/node.eds
 udsic    -i can0 -r 1 -s rand -d rand -p200000 -m5000 --req-id 0x7E0 --resp-id 0x7E8
 j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --priority 3 --pgn 0xFEF2 --sa 0x80 --da 0xFE
 ```
@@ -282,7 +316,7 @@ cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --mutation-chain bitflip,bou
 cansic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --mutation-chain bitflip,boundary,swap --mutation-rate 0.7 --payload-min 2 --payload-max 64 --can-fd --fd-prob 0.3
 udsic -i can0 -r 1 -s rand -d 0x7E0 -p200000 -m5000 --invalid-sid-prob 0.1 --malformed-pci-prob 0.2 --sequence-awareness-prob 0.8 --cf-sequence-anomaly-prob 0.15 --recovery-probe-prob 0.2 --uds-max-payload 128
 j1939sic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --tp-prob 0.2 --invalid-pgn-prob 0.1 --tp-incomplete-dt-prob 0.1 --tp-order-fault-prob 0.05
-cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x61 --invalid-sdo-prob 0.15 --segmented-sdo-prob 0.2 --nmt-state-aware-prob 0.25 --mode-bias sdo-heavy --eds ./casic/examples/node.eds
+cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x61 --invalid-sdo-prob 0.15 --segmented-sdo-prob 0.2 --nmt-state-aware-prob 0.25 --mode-bias sdo-heavy --eds ./casic/examples/canopen/node.eds
 ```
 
 ### PCAN (Windows) examples
@@ -290,12 +324,14 @@ cosic -i can0 -r 1 -s rand -d rand -p200000 -m5000 --node-id 0x61 --invalid-sdo-
 ```bash
 cansic -i pcan:PCAN_USBBUS1 -r 1 -s rand -d rand -p100000 -m5000
 udsic  -i pcan:PCAN_USBBUS1 -r 1 -s rand -d 0x7E0 -p500000 -m10000
-cosic  -i pcan:PCAN_USBBUS1 -r 1 -s rand -d 0x600 -p500000 -m5000 --eds ./casic/examples/node.eds
+cosic  -i pcan:PCAN_USBBUS1 -r 1 -s rand -d 0x600 -p500000 -m5000 --eds ./casic/examples/canopen/node.eds
 ```
 
 You can also pass `-i PCAN_USBBUS1` directly on Windows; CASIC auto-selects the `pcan` backend.
 
 ## CANopen File Support
+
+The CANopen samples now live in `casic/examples/canopen/` (previously directly in `examples/`).
 
 `cosic` supports:
 
@@ -315,6 +351,64 @@ The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-
 - Malformed PDO mappings → check dictionary file for syntax errors
 - Limited data types → not all vendor extensions are supported
 
+## UDS and J1939 description files
+
+Install the optional, maintained format parsers:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[descriptions]"
+```
+
+- **UDS:** `.odx`, `.odx-d`, and `.pdx` via `odxtools`. The loader summarizes resolved services and directly coded request constants. If multiple ECU variants exist, specify `--odx-variant` / `odx_variant`; no arbitrary variant is chosen.
+- **J1939:** `.dbc` via `cantools`. The loader summarizes extended message IDs, PGNs, priority/source/destination addresses and signal metadata (SPN where supplied, bit layout, scale/offset, limits and units). DBC is widely used for J1939 signal definitions but is not a complete diagnostic or network-management specification. No proprietary SAE database is included.
+
+These are **metadata loaders**, not new dictionary-driven generators: attaching a description does not automatically apply its addresses, timing, security algorithms, signal encodings or requests to generated traffic. Existing generator behavior is unchanged.
+
+Inspect files **offline**, without opening any CAN interface:
+
+```powershell
+.\.venv\Scripts\python.exe -m casic.cli.describe .\casic\examples\uds\synthetic.odx-d
+.\.venv\Scripts\python.exe -m casic.cli.describe .\casic\examples\uds\synthetic.pdx
+.\.venv\Scripts\python.exe -m casic.cli.describe .\casic\examples\j1939\synthetic.dbc
+```
+
+The installed equivalent is `casic-describe <file> [--variant <short-name>]`.
+Protocol CLI options are `udsic --odx <file> [--odx-variant <name>]`, `udsic --pdx <file>`, and `j1939sic --dbc <file>`. Unlike `casic-describe`, those protocol commands still run their existing fuzzers.
+
+YAML options in the corresponding protocol block:
+
+```yaml
+protocols:
+  udsic:
+    enabled: false
+    odx: ./casic/examples/uds/synthetic.odx-d  # or pdx, never both
+    odx_variant: SyntheticBenchVariant
+  j1939sic:
+    enabled: false
+    dbc: ./casic/examples/j1939/synthetic.dbc
+```
+
+Disabled sections are not loaded. Relative paths follow the existing convention: they are relative to the process working directory, not the YAML location. Invalid files and ambiguous variants fail explicitly.
+
+Sample layout (synthetic demonstration data, not a real device configuration):
+
+```text
+casic/examples/
+  casic.yaml
+  casic-indepth.yaml
+  canopen/
+    node.eds
+    drive.xdd
+    module.xdc
+  uds/
+    synthetic.odx-d
+    synthetic.pdx
+  j1939/
+    synthetic.dbc
+```
+
+The PDX sample is a ZIP containing the adjacent synthetic ODX-D file. New sample identifiers and values are invented, not taken from the connected device. The ODX sample deliberately contains no transport addresses or reset service.
+
 ## Fuzzing Features
 
 - Raw CAN random IDs, extended-ID probability, explicit CAN-FD mode (`--can-fd`), CAN-FD probability (`--fd-prob`), and payload size ranges
@@ -329,7 +423,7 @@ The parser extracts object dictionary entries, PDO mapping, SDO parameters, COB-
 Capture sent sequences:
 
 ```bash
-cosic -i can0 -r 1 -s rand -d 0x600 -p5000 -m1000 --eds ./casic/examples/node.eds --save-replay ./replay_cosic.jsonl
+cosic -i can0 -r 1 -s rand -d 0x600 -p5000 -m1000 --eds ./casic/examples/canopen/node.eds --save-replay ./replay_cosic.jsonl
 ```
 
 Replay captured sequence:
@@ -353,9 +447,105 @@ Replay records are additive and backward compatible. New records include optiona
 
 Older JSONL records without these fields remain readable.
 
-**Known limitation (v0.0.6)**: Replay does not restore UDS session state or J1939 connection state; exact response patterns may differ. This will be fixed in v0.0.8.
+**Known limitation**: Replay does not restore UDS session/security state or J1939 connection state; exact response patterns may differ. `casic-replay-check` can report recognizable protocol-frame counts, but cannot infer accepted device state from sent-only captures.
 
 ## Observability Outputs
+
+### Optional received-frame and transport-failure capture
+
+All four fuzzers support `--save-responses` (default: **false**), with
+`--responses-file <path>` selecting a JSONL output. A path alone does not enable
+saving. YAML accepts the same settings globally or per protocol:
+
+```yaml
+global:
+  save_responses: false
+  response_drain_seconds: 0.1
+protocols:
+  udsic:
+    enabled: true
+    save_responses: true
+    responses_file: .\replay\uds_responses.jsonl
+```
+
+This snippet is an addition to an existing interface/target configuration, not
+a complete target profile. Each enabled protocol must have a distinct capture
+path. Without an explicit path, the defaults are `cansic_responses.jsonl`,
+`uds_responses.jsonl`, `j1939_responses.jsonl`, and `cosic_responses.jsonl` in the
+working directory. Repeated runs overwrite the file; archive results first.
+Capture paths must not overwrite replay input/output, summary, or correlation files.
+
+The capture streams and flushes each event, including:
+
+- `event: received`: every frame returned by the adapter, **before protocol
+  filtering**, with `accepted`, CAN ID, hexadecimal payload, extended/FD flags,
+  host receive timestamp, original adapter timestamp in `frame.meta.adapter_timestamp`,
+  and receive metadata (error/remote-frame flags and DLC).
+- `event: transport_error`: open/send/receive/close failures, exception type and
+  message, operation, and the attempted frame for send failures.
+- Common context: schema version, protocol, run ID, seed/profile, interface,
+  bitrate, host observation time, and phase (`run`, `replay`, or `drain`).
+
+`accepted` means a non-error, non-remote data frame passed the protocol filter,
+not that it is a valid reply or came from the intended ECU. Captured
+`frame_kind` distinguishes `data`, `can_error`, and `remote`; CAN error and
+remote frames never enter response correlation or adaptive processing.
+`observed_frames` counts all RX, `ordinary_received` counts data frames before
+protocol filtering, and `received` counts accepted data frames. Separate
+`can_error_frames` and `remote_frames` counts appear in summaries and health reports.
+Old summaries lack these counts and cannot be retrospectively reclassified.
+
+Receive `frame.timestamp` now uses host wall time at dequeue, in the same clock
+domain as logged requests (`frame.meta.timestamp_source: host_receive`).
+The original unmodified adapter value is retained in `frame.meta.adapter_timestamp`;
+no guessed boot-time offset is applied. `observed_at` records capture write time.
+Correlation latency therefore includes adapter/host queue and processing delays:
+it is **host-observed latency**, not hardware response latency. Normalizing the
+clock does not prove request/response causality or fix ambiguous/stale messages.
+Existing captures are not rewritten. These files
+are event logs, not sent-frame replay inputs.
+
+When enabled, receive polling also runs for raw CAN, drains at most 256 frames
+per generation, and listens for a bounded final window
+(`response_drain_seconds`, default 0.1; range 0..60). This is best-effort capture,
+not a continuous bus analyzer: traffic before/after a run or beyond adapter
+buffer capacity can be missed. Additional polling and feedback can change the
+subsequent UDS sequence even with the same seed. Saving also works during replay.
+
+Transport failures are logged to the console and counted separately as
+`transport_errors` in summaries and health reports even when saving is disabled.
+`sent` remains an **attempt count**, not confirmed delivery. Active known-good
+before/after probes and automatic device-failure confirmation are not implemented.
+
+The local mixed SCIS profile's UDS section uses `rate_mode: 0`,
+`uds_max_payload_len: 1`, and a two-second final receive drain for an initial
+single-frame-sized campaign. Other sections retain their configured speeds.
+Pacing reduces burst/queue pressure; it does not guarantee delivery or repair a
+bus/ACK problem. Malformed PCI testing can still deliberately advertise invalid
+lengths/types. Archive previous outputs before running again.
+
+### Opt-in feedback for the other protocols
+
+New feedback settings default to **0.0** (off), range 0..1. Existing UDS
+sequence/NRC controls remain unchanged.
+
+| Protocol | YAML / CLI | Feedback behavior |
+|---|---|---|
+| Raw CAN | `raw_feedback_probability` / `--raw-feedback-probability` | Learns up to 256 observed ID/format/payload templates and probabilistically mutates a template with the existing mutation engine. Explicit destination and FD permission are respected. This is traffic-guided mutation, not request/response inference. |
+| CANopen | `canopen_feedback_probability` / `--canopen-feedback-probability` | Accepts the selected node's heartbeat/boot-up frames. Observed stopped/boot-up state biases toward an NMT pre-operational request; observed operational/pre-operational state biases toward SDO traffic. Reuses the existing temporary SDO-abort blacklist. |
+| J1939 | `j1939_feedback_probability` / `--j1939-feedback-probability` | Tracks the latest addressed application transmission or RTS within `correlation_window_seconds`. Matching peer/destination/referenced-PGN ACK feedback biases the next selected generation toward that PGN/peer; negative ACK or TP Abort suppresses TP for that generation and changes the PGN when it is not explicitly pinned. |
+
+For example, set `raw_feedback_probability: 0.25` under `cansic`,
+`canopen_feedback_probability: 0.25` under `cosic`, or
+`j1939_feedback_probability: 0.25` under `j1939sic`. Saving responses and enabling
+feedback are independent choices. Generated feedback-driven frames carry a
+`meta.feedback` tag in sent replay output.
+
+CANopen already had optional abort-aware selection and local NMT-state
+awareness; the new setting adds **observed** heartbeat feedback. Requested NMT
+state is not proof of actual state. J1939 feedback does not implement a
+CTS-paced transport client, complete address claiming, or response matching for
+arbitrary broadcasts. Explicit PGN/address settings are not overridden.
 
 ### Summary JSON
 
@@ -369,6 +559,13 @@ Required run fields include:
 - `protocol`, `run_id`, `seed`, `profile_name`
 - `started_at`, `ended_at`, `duration_ms`
 - `sent`, `received`, `errors`, `burst_frames`
+- `transport_errors`, `observed_frames`, `ordinary_received`, `can_error_frames`, `remote_frames`
+
+`sent` counts attempts; `received` counts data frames accepted by the protocol
+filter, not validated replies. For current summaries,
+`observed_frames = ordinary_received + can_error_frames + remote_frames`.
+Error/remote frames never enter application feedback or correlation.
+`errors` is the response-processing error count, not the CAN error-frame count.
 
 ### Correlation CSV
 
@@ -389,6 +586,40 @@ The report appends summary metrics:
 - `latency_p50_ms`, `latency_p90_ms`, `latency_p95_ms`, `latency_p99_ms`
 
 For unsupported protocols (`cansic`, `cosic`), a metadata-only correlation artifact is emitted when correlation is enabled.
+
+### Offline health report
+
+`casic-health-report` combines existing run-summary JSON and correlation CSV files into an offline JSON report. It does not open a CAN interface or contact a device:
+
+```powershell
+casic-health-report --summary .\casic_summary.json `
+  --correlation .\uds_correlation.csv `
+  --correlation .\j1939_correlation.csv `
+  --output .\health-report.json
+```
+
+Repeat `--summary` or `--correlation` to include multiple artifacts. The report includes run counts, receive-to-send ratios, request match counts, unmatched percentages, and latency percentiles where correlation rows exist. These are diagnostic observations only: missing responses, errors, or latency changes do not prove that a device crashed or hung. Compare results with a known-good baseline and verify the device state independently.
+
+To compare a current run with a previously generated health report, add `--baseline .\baseline-health.json`. Deltas are descriptive only; comparisons require one matching protocol and profile.
+
+The YAML runner also creates a health report automatically when summary output is enabled. Configure `global.health_report_enabled: false` to disable it, or set `global.health_report_file` to choose its output path. By default, the report is written next to the summary using the summary filename with `_health` appended. YAML health reporting reads the summary and only those correlation CSVs enabled for successfully completed protocols; it sends no additional CAN frames.
+
+### Offline replay validation and coverage
+
+Use `casic-replay-check .\capture.jsonl` to validate an existing replay file without transmitting it. The checker reports malformed records and common identifier/payload/timestamp issues; it cannot establish protocol correctness or restore device state. See [docs/OFFLINE_VALIDATION_AND_COVERAGE.md](docs/OFFLINE_VALIDATION_AND_COVERAGE.md) for the implementation evidence matrix, replay limitations, and a manual lab-validation checklist.
+
+The checker also summarizes recognizable state-changing UDS and CANopen frames and J1939 transport frames. This is a sequence inventory, not state reconstruction; never treat it as proof that the target accepted the request.
+
+### Passive PCAN observation
+
+`casic-pcan-check` passively listens to the PCAN channel from the YAML config for five seconds by default. It does not call the CAN transmit API or run any fuzzer:
+
+```powershell
+casic-pcan-check --config .\casic\examples\casic.yaml --duration 5 `
+  --output .\replay\pcan-passive-check.json
+```
+
+The duration is limited to 1–60 seconds. The report lists observed CAN IDs and whether the configured UDS/CANopen response IDs appeared during that sample. No traffic or a missing ID is inconclusive; this is adapter/bus observation, not a device health verdict. Ensure the adapter supports passive/listen-only mode and confirm its driver state using the vendor's tooling if required.
 
 ### Interpreting Results
 
@@ -430,12 +661,24 @@ On Linux: SocketCAN requires root or group membership in `can` group
 - Check Device Manager → Universal Serial Bus controllers for PCAN device
 - Restart Python/terminal after driver installation
 
-**No frames received (dry-send mode)**:
+**Adapter unavailable / offline transport**:
 ```bash
-Warning: python-can not installed or interface unavailable. Running in dry-send mode.
+CAN open failed on ...: ...
 ```
 - Install `python-can`: `pip install -e .[can]`
-- Or validate interface is correctly specified: `cansic -i <your_interface> -r 1 -s rand -d rand -p100 -m10`
+- Verify interface name, driver, connection, and bitrate before active use.
+- Frame generation may continue offline; `sent` does not prove delivery.
+
+**PCAN transmit queue full**:
+- This is a local send/enqueue failure, not a UDS negative response.
+- Archive output first; select only the protocol on the verified port.
+- Start UDS with `rate_mode: 0`, `uds_max_payload_len: 1`, and
+  `response_drain_seconds: 2.0`. Malformed PCI testing may still produce invalid
+  advertised types/lengths, but these settings avoid generated CF bursts.
+- Check `transport_errors` and `can_error_frames` independently. Pacing is not
+  an ACK/physical-layer repair and does not guarantee successful delivery.
+- Standard and local SCIS initial UDS profiles use these settings; the in-depth
+  profile deliberately retains maximum-speed multi-frame stress.
 
 **Parser errors (CANopen)**:
 ```bash
@@ -476,16 +719,17 @@ This roadmap is based on identified gaps in the current codebase and prioritizes
 **Complexity**: Low
 
 #### 2. Transport Error Visibility 🔴
-**Problem**: SocketCAN silently swallows exceptions beyond "queue full"; real failures (cable loss, power failure, interface down) go unnoticed
+**Implemented**: Open/send/receive/close failures are logged and counted as
+`transport_errors`, with optional streamed response/error capture.
+CAN error frames have a separate count and do not enter application feedback.
+Progress output includes transport and CAN-error counts.
 
-**Work**:
-- Replace silent exception handler in `socketcan.py:send()`
-- Log all send failures with descriptive messages
-- Track failures in `FuzzStats.errors` counter
-- Document error visibility in CLI output
+**Remaining**: Confirmed on-wire delivery, queue-aware retry/backpressure,
+fail-fast campaign policy, and independent device-health confirmation.
+No automatic retry or recovery is implied by error visibility.
 
-**Test**: `test_transport_failures()` in `test_runtime_controls.py`  
-**Complexity**: Low
+**Tests**: `test_response_capture.py` covers transport operations, receive
+classification, capture output, and cross-clock-domain correlation.
 
 #### 3. CAN-ID Range Validation
 **Problem**: Generator produces invalid CAN identifiers beyond legal ranges

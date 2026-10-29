@@ -5,11 +5,14 @@ from pathlib import Path
 
 from casic.core.models import FuzzConfig
 from casic.core.parser import CANopenDictionaryParser
+from casic.core.parser import J1939DescriptionParser
+from casic.core.parser.protocol_descriptions import load_uds_description
 from casic.protocols import CANopenFuzzer, J1939Fuzzer, RawCANFuzzer, UDSFuzzer
 
 
 def _add_common_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("-i", dest="interface", required=True, help="CAN interface (e.g., can0)")
+    parser.add_argument("--bitrate", type=int, default=500000, help="PCAN bitrate in bit/s; SocketCAN must be configured externally")
     parser.add_argument("-r", dest="rate_mode", type=int, default=1, help="rate mode (1=max speed)")
     parser.add_argument("-s", dest="source_mode", default="rand", help="source mode: rand or CAN-ID")
     parser.add_argument("-d", dest="destination", default="rand", help="destination CAN-ID / address")
@@ -18,6 +21,12 @@ def _add_common_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--seed", dest="seed", type=int, default=None)
     parser.add_argument("--replay", dest="replay_file", type=Path, default=None)
     parser.add_argument("--save-replay", dest="save_replay_file", type=Path, default=None)
+    parser.add_argument("--save-responses", action="store_true", help="Save all observed RX frames and transport failures as JSONL (default: off)")
+    parser.add_argument("--responses-file", type=Path, help="Capture path; does not enable saving by itself")
+    parser.add_argument("--response-drain-seconds", type=float, default=0.1, help="Final receive window when saving responses (0..60 seconds)")
+    parser.add_argument("--raw-feedback-probability", type=float, default=0.0)
+    parser.add_argument("--canopen-feedback-probability", type=float, default=0.0)
+    parser.add_argument("--j1939-feedback-probability", type=float, default=0.0)
     parser.add_argument("--enable-summary", action="store_true", help="Enable JSON run summary output")
     parser.add_argument("--summary-json", dest="summary_file", type=Path, default=None, help="Summary JSON output path")
     parser.add_argument("--enable-correlation", action="store_true", help="Enable request-response correlation CSV")
@@ -41,6 +50,8 @@ def _add_common_arguments(parser: argparse.ArgumentParser):
 def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
     return FuzzConfig(
         interface=args.interface,
+        bitrate=args.bitrate,
+        uds_extended_id=getattr(args, "uds_extended_id", False),
         rate_mode=args.rate_mode,
         source_mode=args.source_mode,
         destination=args.destination,
@@ -49,6 +60,12 @@ def _config_from_args(args: argparse.Namespace) -> FuzzConfig:
         seed=args.seed,
         replay_file=args.replay_file,
         save_replay_file=args.save_replay_file,
+        save_responses=args.save_responses,
+        responses_file=args.responses_file,
+        response_drain_seconds=args.response_drain_seconds,
+        raw_feedback_probability=args.raw_feedback_probability,
+        canopen_feedback_probability=args.canopen_feedback_probability,
+        j1939_feedback_probability=args.j1939_feedback_probability,
         summary_enabled=bool(getattr(args, "enable_summary", False) or getattr(args, "summary_file", None)),
         summary_file=getattr(args, "summary_file", None),
         correlation_enabled=bool(
@@ -158,6 +175,11 @@ def main_cansic(argv: list[str] | None = None):
 def main_udsic(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(prog="udsic")
     _add_common_arguments(parser)
+    parser.add_argument("--extended-id", dest="uds_extended_id", action="store_true", help="Use extended CAN IDs even for numeric IDs <= 0x7FF; larger IDs imply extended")
+    descriptions = parser.add_mutually_exclusive_group()
+    descriptions.add_argument("--odx", type=Path, help="ODX diagnostic description (metadata only)")
+    descriptions.add_argument("--pdx", type=Path, help="PDX diagnostic package (metadata only)")
+    parser.add_argument("--odx-variant", help="Diagnostic ECU variant short name")
     parser.add_argument("--req-id", dest="uds_request_id", type=lambda x: int(x, 0), help="UDS request CAN-ID")
     parser.add_argument("--resp-id", dest="uds_response_id", type=lambda x: int(x, 0), help="UDS expected response CAN-ID")
     parser.add_argument("--malformed-pci-prob", dest="uds_malformed_pci_probability", type=float, default=0.0)
@@ -222,13 +244,15 @@ def main_udsic(argv: list[str] | None = None):
     args = parser.parse_args(argv)
     config = _config_from_args(args)
     _ensure_observability_paths(config, "udsic")
-    fuzzer = UDSFuzzer(config)
+    description = load_uds_description(args.odx, args.pdx, args.odx_variant)
+    fuzzer = UDSFuzzer(config, description=description)
     fuzzer.run()
 
 
 def main_j1939sic(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(prog="j1939sic")
     _add_common_arguments(parser)
+    parser.add_argument("--dbc", type=Path, help="J1939 DBC description (metadata only)")
     parser.add_argument("--priority", dest="j1939_priority", type=int, choices=range(0, 8), help="J1939 priority (0-7)")
     parser.add_argument("--pgn", dest="j1939_pgn", type=lambda x: int(x, 0), help="J1939 PGN")
     parser.add_argument("--sa", dest="j1939_sa", type=lambda x: int(x, 0), help="J1939 source address")
@@ -273,7 +297,10 @@ def main_j1939sic(argv: list[str] | None = None):
     args = parser.parse_args(argv)
     config = _config_from_args(args)
     _ensure_observability_paths(config, "j1939sic")
-    fuzzer = J1939Fuzzer(config)
+    description = J1939DescriptionParser().load(args.dbc) if args.dbc else None
+    if description is not None:
+        print(f"[j1939] loaded description messages={len(description.messages)} (metadata only)")
+    fuzzer = J1939Fuzzer(config, description=description)
     fuzzer.run()
 
 

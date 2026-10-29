@@ -5,6 +5,28 @@ All notable changes to CASIC (CAN Stack Integrity Checker) are documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-10-29
+
+### Added
+
+- Optional streamed received-frame and transport-failure capture, separate bus-error counters, and offline health/baseline reports.
+- ODX/PDX and J1939 DBC metadata imports, organized synthetic examples, offline description/replay inspection, and passive PCAN observation.
+- Opt-in raw CAN traffic-template, CANopen heartbeat/abort, and J1939 addressed-feedback adaptation.
+
+### Changed
+
+- Updated CLI/YAML options, capture paths, initial paced UDS profiles, and mixed-feedback classic-CAN in-depth coverage.
+- Receive correlation uses host dequeue timestamps while preserving original adapter timestamps; reported latency includes buffering and processing.
+
+### Fixed
+
+- Module execution of the YAML runner, PCAN bitrate propagation, and extended-ID UDS generation/filtering.
+- Transport failures are reported explicitly; CAN error/remote frames are excluded from application-response counts, correlation, and feedback.
+
+### Notes
+
+- Offline validation does not establish device health, confirmed wire delivery, complete transport handshakes, or automatic state restoration.
+
 ## [0.0.6] — 2026-03-26
 
 ### Added

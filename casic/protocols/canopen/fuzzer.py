@@ -28,6 +28,7 @@ class CANopenFuzzer(BaseFuzzer):
         }
         self._abort_blacklist: dict[tuple[int, int], int] = {}
         self._nmt_state = "pre-operational"
+        self._observed_nmt_state: str | None = None
         self.node_id = config.node_id
         self.destination_cobid = None
         if config.destination != "rand":
@@ -70,7 +71,7 @@ class CANopenFuzzer(BaseFuzzer):
         if not self.dictionary.entries:
             return None
         candidates = list(self.dictionary.entries)
-        if self.config.canopen_abort_aware_probability > 0.0:
+        if self.config.canopen_abort_aware_probability > 0.0 or self.config.canopen_feedback_probability > 0.0:
             candidates = [
                 entry
                 for entry in candidates
@@ -88,6 +89,9 @@ class CANopenFuzzer(BaseFuzzer):
 
     def should_accept_response(self, frame: CANFrame) -> bool:
         sdo_tx_cobid = self._resolve_cob_id("SDO_TX", 0x580)
+        if self.config.canopen_feedback_probability > 0 and not frame.is_extended_id:
+            if self.node_id is not None and frame.can_id == 0x700 + self.node_id:
+                return True
         return frame.can_id == sdo_tx_cobid
 
     def _decay_abort_blacklist(self):
@@ -102,11 +106,15 @@ class CANopenFuzzer(BaseFuzzer):
             self._abort_blacklist.pop(key, None)
 
     def on_response(self, frame: CANFrame):
+        if self.config.canopen_feedback_probability > 0 and self.node_id is not None and not frame.is_extended_id and frame.can_id == 0x700 + self.node_id:
+            if len(frame.data) == 1:
+                self._observed_nmt_state = {0: "boot-up", 4: "stopped", 5: "operational", 127: "pre-operational"}.get(frame.data[0] & 0x7F)
+            return
         if len(frame.data) < 8:
             return
         if frame.data[0] != 0x80:
             return
-        if self.rng.random() >= self.config.canopen_abort_aware_probability:
+        if self.rng.random() >= max(self.config.canopen_abort_aware_probability, self.config.canopen_feedback_probability):
             return
 
         index = frame.data[1] | (frame.data[2] << 8)
@@ -282,6 +290,13 @@ class CANopenFuzzer(BaseFuzzer):
 
     def generate_frame(self, sequence_number: int) -> CANFrame:
         self._decay_abort_blacklist()
+        if self._observed_nmt_state is not None and self.rng.random() < self.config.canopen_feedback_probability:
+            if self._observed_nmt_state in {"stopped", "boot-up"}:
+                frame = CANFrame(can_id=0, data=bytes([0x80, self.node_id or 0]))
+            else:
+                frame = self._generate_sdo()
+            frame.meta["feedback"] = f"heartbeat:{self._observed_nmt_state}"
+            return frame
         bias = self.config.canopen_mode_bias or "balanced"
         if bias == "sdo-heavy":
             mode = self.rng.choice(["sdo", "sdo", "sdo", "pdo", "nmt", "emcy", "sync_time"])

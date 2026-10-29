@@ -1,15 +1,59 @@
 from __future__ import annotations
 
+import time
+
 from casic.core.engine import BaseFuzzer
 from casic.core.models import CANFrame
+from casic.core.parser.protocol_descriptions import J1939Description
 
 
 class J1939Fuzzer(BaseFuzzer):
     protocol_name = "j1939"
 
-    def __init__(self, config):
+    def __init__(self, config, description: J1939Description | None = None):
         super().__init__(config)
+        self.description = description
         self._tp_fault_epoch = 0
+        self._feedback_request: tuple[int, int, int] | None = None
+        self._feedback_sent_at = 0.0
+        self._feedback: tuple[str, int, int] | None = None
+
+    def on_frame_sent(self, frame: CANFrame):
+        if self.config.j1939_feedback_probability <= 0 or not frame.is_extended_id:
+            return
+        pf = (frame.can_id >> 16) & 0xFF
+        ps = (frame.can_id >> 8) & 0xFF
+        sa = frame.can_id & 0xFF
+        if pf == 0xEC and len(frame.data) == 8 and frame.data[0] == 0x10:
+            self._feedback_request = (sa, ps, int.from_bytes(frame.data[5:8], "little"))
+            self._feedback_sent_at = time.monotonic()
+        elif pf < 0xF0 and pf not in {0xEC, 0xEB, 0xE8} and ps != 0xFF:
+            self._feedback_request = (sa, ps, (frame.can_id >> 8) & 0x3FF00)
+            self._feedback_sent_at = time.monotonic()
+
+    def on_response(self, frame: CANFrame):
+        if self.config.j1939_feedback_probability <= 0 or self._feedback_request is None:
+            return
+        if time.monotonic() - self._feedback_sent_at > self.config.correlation_window_seconds:
+            self._feedback_request = None
+            return
+        if not frame.is_extended_id or len(frame.data) != 8:
+            return
+        local, peer, pgn = self._feedback_request
+        if frame.can_id & 0xFF != peer or (frame.can_id >> 8) & 0xFF != local:
+            return
+        pf = (frame.can_id >> 16) & 0xFF
+        referenced_pgn = int.from_bytes(frame.data[5:8], "little")
+        if referenced_pgn != pgn:
+            return
+        if pf == 0xE8 and frame.data[0] in {0, 1, 2, 3}:
+            kind = "ack" if frame.data[0] == 0 else "negative-ack"
+        elif pf == 0xEC and frame.data[0] == 0xFF:
+            kind = "tp-abort"
+        else:
+            return
+        self._feedback = (kind, pgn, peer)
+        self._feedback_request = None
 
     def _with_sequence(self, frame: CANFrame, sequence: int) -> CANFrame:
         payload = bytes([sequence & 0xFF]) + frame.data[1:]
@@ -190,11 +234,34 @@ class J1939Fuzzer(BaseFuzzer):
             da = int(self.config.destination, 0) & 0xFF
         else:
             da = self.rng.j1939_address()
+        feedback = None
+        suppress_tp = False
+        if self._feedback is not None and self.rng.random() < self.config.j1939_feedback_probability:
+            kind, observed_pgn, peer = self._feedback
+            self._feedback = None
+            feedback = kind
+            if kind == "ack":
+                if self.config.j1939_pgn is None:
+                    pgn = observed_pgn
+                if self.config.j1939_da is None and self.config.destination == "rand":
+                    da = peer
+            else:
+                suppress_tp = True
+                if self.config.j1939_pgn is None:
+                    pgn = (observed_pgn + 0x100) & 0x3FFFF
+        app_pgn = pgn
+        if feedback is not None and ((pgn >> 8) & 0xFF) < 0xF0:
+            app_pgn = pgn & 0x3FF00
+            if self.config.j1939_pgn is None:
+                pgn = app_pgn | da
         can_id = self._build_can_id(priority, pgn, sa)
         payload = self.rng.randbytes(8)
         payload = bytes([da]) + payload[1:]
 
-        if self.rng.random() < self.config.j1939_tp_probability:
-            return self._build_tp_burst(priority=priority, sa=sa, da=da, app_pgn=pgn)
-
-        return CANFrame(can_id=can_id, data=payload, is_extended_id=True)
+        if self.rng.random() < self.config.j1939_tp_probability and not suppress_tp:
+            frame = self._build_tp_burst(priority=priority, sa=sa, da=da, app_pgn=app_pgn)
+        else:
+            frame = CANFrame(can_id=can_id, data=payload, is_extended_id=True)
+        if feedback is not None:
+            frame.meta["feedback"] = feedback
+        return frame

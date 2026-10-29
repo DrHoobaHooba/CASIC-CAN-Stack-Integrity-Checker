@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from typing import Any
 
 from casic.cli.yaml_config import load_yaml, parse_int, parse_path
+from casic.cli.health_report import build_health_report
 from casic.core.logging import PacketLogger
 from casic.core.models import FuzzConfig
 from casic.core.parser import CANopenDictionaryParser
+from casic.core.parser import J1939DescriptionParser
+from casic.core.parser.protocol_descriptions import load_uds_description
 from casic.protocols import CANopenFuzzer, J1939Fuzzer, RawCANFuzzer, UDSFuzzer
 
 
@@ -21,6 +25,8 @@ def _build_common(protocol_name: str, global_cfg: dict[str, Any], protocol_cfg: 
     merged = _merge(global_cfg, protocol_cfg)
     return FuzzConfig(
         interface=str(merged.get("interface", "can0")),
+        bitrate=merged.get("bitrate", 500000),
+        uds_extended_id=merged.get("uds_extended_id", False),
         rate_mode=int(merged.get("rate_mode", 1)),
         source_mode=str(merged.get("source_mode", "rand")),
         destination=str(merged.get("destination", "rand")),
@@ -29,6 +35,12 @@ def _build_common(protocol_name: str, global_cfg: dict[str, Any], protocol_cfg: 
         seed=parse_int(merged.get("seed")),
         replay_file=parse_path(merged.get("replay_file")),
         save_replay_file=parse_path(merged.get("save_replay_file")),
+        save_responses=merged.get("save_responses", False),
+        responses_file=parse_path(merged.get("responses_file")),
+        response_drain_seconds=float(merged.get("response_drain_seconds", 0.1)),
+        raw_feedback_probability=float(merged.get("raw_feedback_probability", 0.0)),
+        canopen_feedback_probability=float(merged.get("canopen_feedback_probability", 0.0)),
+        j1939_feedback_probability=float(merged.get("j1939_feedback_probability", 0.0)),
         summary_enabled=bool(merged.get("summary_enabled", False) or merged.get("summary_file")),
         summary_file=parse_path(merged.get("summary_file")),
         correlation_enabled=bool(
@@ -110,8 +122,37 @@ def run_from_yaml(config_path: str | Path):
         raise ValueError("YAML must contain 'global' and 'protocols' mappings")
 
     order = ["cansic", "udsic", "j1939sic", "cosic"]
+    configs = {
+        name: _build_common(name, global_cfg, protocols[name])
+        for name in order
+        if isinstance(protocols.get(name), dict) and protocols[name].get("enabled", False)
+    }
+    capture_paths: set[Path] = set()
+    for name, config in configs.items():
+        if config.save_responses:
+            protocol = {"udsic": "uds", "j1939sic": "j1939"}.get(name, name)
+            path = (config.responses_file or Path(f"{protocol}_responses.jsonl")).resolve()
+            if path in capture_paths:
+                raise ValueError("Enabled protocols must use distinct responses_file paths")
+            capture_paths.add(path)
     summaries = []
     summary_output_path: Path | None = None
+    correlation_output_paths: list[Path] = []
+    summary_reporting_configured = bool(global_cfg.get("summary_enabled", False) or global_cfg.get("summary_file"))
+    summary_reporting_configured = summary_reporting_configured or any(
+        isinstance(section, dict)
+        and section.get("enabled", False)
+        and bool(section.get("summary_enabled", False) or section.get("summary_file"))
+        for section in protocols.values()
+    )
+    health_report_enabled = bool(global_cfg.get("health_report_enabled", summary_reporting_configured))
+    health_report_output_path = parse_path(global_cfg.get("health_report_file"))
+
+    def record_result(result, config: FuzzConfig):
+        if result is not None:
+            summaries.append(result)
+            if config.correlation_enabled and config.correlation_report_file is not None:
+                correlation_output_paths.append(config.correlation_report_file)
 
     for name in order:
         section = protocols.get(name, {})
@@ -123,7 +164,16 @@ def run_from_yaml(config_path: str | Path):
             print(f"[casic] skip {name} (enabled=false)")
             continue
 
-        config = _build_common(name, global_cfg, section)
+        config = configs[name]
+        uds_description = None
+        j1939_description = None
+        if name == "udsic":
+            uds_description = load_uds_description(
+                parse_path(section.get("odx")), parse_path(section.get("pdx")), section.get("odx_variant"),
+            )
+        elif name == "j1939sic" and section.get("dbc"):
+            j1939_description = J1939DescriptionParser().load(Path(str(section["dbc"])))
+            print(f"[j1939] loaded description messages={len(j1939_description.messages)} (metadata only)")
         if config.summary_enabled and summary_output_path is None:
             summary_output_path = config.summary_file or Path("casic_summary.json")
         if config.summary_enabled and config.summary_file is None:
@@ -138,20 +188,17 @@ def run_from_yaml(config_path: str | Path):
                 can_fd = bool(section.get("can_fd", False))
                 mutation = str(section.get("mutation", "bitflip"))
                 result = RawCANFuzzer(config, can_fd=can_fd, mutation_mode=mutation).run(write_summary=False)
-                if result is not None:
-                    summaries.append(result)
+                record_result(result, config)
                 continue
 
             if name == "udsic":
-                result = UDSFuzzer(config).run(write_summary=False)
-                if result is not None:
-                    summaries.append(result)
+                result = UDSFuzzer(config, description=uds_description).run(write_summary=False)
+                record_result(result, config)
                 continue
 
             if name == "j1939sic":
-                result = J1939Fuzzer(config).run(write_summary=False)
-                if result is not None:
-                    summaries.append(result)
+                result = J1939Fuzzer(config, description=j1939_description).run(write_summary=False)
+                record_result(result, config)
                 continue
 
             if name == "cosic":
@@ -164,18 +211,36 @@ def run_from_yaml(config_path: str | Path):
                         f"cob_ids={len(dictionary.cob_ids)}"
                     )
                 result = CANopenFuzzer(config, dictionary=dictionary).run(write_summary=False)
-                if result is not None:
-                    summaries.append(result)
+                record_result(result, config)
         except Exception as e:
             print(f"[casic] error in {name}: {type(e).__name__}: {e}")
 
     print(f"[casic] completed all protocols. writing aggregate summary to {summary_output_path} with {len(summaries)} runs")
+    summary_written = False
     if summary_output_path is not None and summaries:
         try:
             PacketLogger.write_run_summary(Path(summary_output_path), summaries)
             print(f"[casic] aggregate summary written successfully to {summary_output_path}")
+            summary_written = True
         except Exception as e:
             print(f"[casic] error writing summary: {type(e).__name__}: {e}")
+
+    if health_report_enabled:
+        summary_inputs = [summary_output_path] if summary_written and summary_output_path is not None else []
+        if not summary_inputs and not correlation_output_paths:
+            print("[casic] health report skipped: no current-run summary or correlation artifacts were produced")
+            return
+        if health_report_output_path is None:
+            base_path = summary_output_path or Path("casic_summary.json")
+            health_report_output_path = base_path.with_name(f"{base_path.stem}_health.json")
+
+        report = build_health_report(summary_inputs, correlation_output_paths)
+        health_report_output_path.parent.mkdir(parents=True, exist_ok=True)
+        health_report_output_path.write_text(
+            json.dumps(report, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"[casic] offline health report written to {health_report_output_path}")
 
 
 def main(argv: list[str] | None = None):
@@ -183,3 +248,7 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--config", required=True, type=Path, help="YAML configuration file")
     args = parser.parse_args(argv)
     run_from_yaml(args.config)
+
+
+if __name__ == "__main__":
+    main()

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from casic.core.engine import BaseFuzzer
 from casic.core.models import CANFrame
+from casic.core.parser.protocol_descriptions import UDSDescription
 
 
 class UDSFuzzer(BaseFuzzer):
     protocol_name = "uds"
 
-    def __init__(self, config):
+    def __init__(self, config, description: UDSDescription | None = None):
         super().__init__(config)
+        self.description = description
         self._session_active = False
         self._security_unlocked = False
         self._pending_security_key_subfunction: int | None = None
@@ -136,7 +138,8 @@ class UDSFuzzer(BaseFuzzer):
     def should_accept_response(self, frame: CANFrame) -> bool:
         if self.config.uds_response_id is None:
             return True
-        return frame.can_id == self.config.uds_response_id
+        expected_extended = self.config.uds_extended_id or self.config.uds_response_id > 0x7FF
+        return frame.can_id == self.config.uds_response_id and frame.is_extended_id == expected_extended
 
     def on_response(self, frame: CANFrame):
         payload = self._extract_uds_payload(frame)
@@ -177,6 +180,7 @@ class UDSFuzzer(BaseFuzzer):
             dst_id = self.config.uds_request_id
         else:
             dst_id = self.rng.can_id() if self.config.destination == "rand" else int(self.config.destination, 0)
+        extended = self.config.uds_extended_id or dst_id > 0x7FF
 
         sid: int
         subfunction: int
@@ -255,7 +259,7 @@ class UDSFuzzer(BaseFuzzer):
                 pci = bytes([self.rng.choice([0xFF, 0x7F, 0x00])])
             payload = (pci + app_payload).ljust(8, b"\x00")
             meta = {"uds_length_mismatch": mismatch} if mismatch is not None else {}
-            return CANFrame(can_id=dst_id, data=payload, meta=meta)
+            return CANFrame(can_id=dst_id, data=payload, is_extended_id=extended, meta=meta)
 
         total_len = len(app_payload)
         advertised_total_len = total_len
@@ -277,7 +281,7 @@ class UDSFuzzer(BaseFuzzer):
             if self.rng.random() < self.config.uds_malformed_pci_probability:
                 cf_header = self.rng.choice([0x00, 0x10, 0x30, 0xFF])
             cf = bytes([cf_header]) + chunk
-            burst_frames.append(CANFrame(can_id=dst_id, data=cf.ljust(8, b"\x00")))
+            burst_frames.append(CANFrame(can_id=dst_id, data=cf.ljust(8, b"\x00"), is_extended_id=extended))
             seq = (seq + 1) & 0x0F
         cf_anomaly = self._apply_cf_sequence_anomaly(burst_frames)
         meta = {"burst": burst_frames}
@@ -285,4 +289,4 @@ class UDSFuzzer(BaseFuzzer):
             meta["uds_length_mismatch"] = length_mismatch
         if cf_anomaly is not None:
             meta["uds_cf_sequence_anomaly"] = cf_anomaly
-        return CANFrame(can_id=dst_id, data=ff.ljust(8, b"\x00"), meta=meta)
+        return CANFrame(can_id=dst_id, data=ff.ljust(8, b"\x00"), is_extended_id=extended, meta=meta)

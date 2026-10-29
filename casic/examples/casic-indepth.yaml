@@ -1,7 +1,26 @@
+# Broad classic-CAN stress profile, not full protocol conformance or a health verdict.
+# Run from the project root. IDs and dictionary below are SYNTHETIC examples:
+# replace them with the authorized target's settings before a device campaign.
+# Select only protocols supported on the connected port; sections run sequentially.
+# All sections remain enabled for an isolated multi-protocol test bench.
+# Retains one million PRIMARY generations per protocol, not one million wire frames.
+# Bursts add frames; sent/received lists remain in memory until each run finishes.
+# Allow substantial RAM/disk space; sent replay serialization adds memory overhead.
+# Correlation scans can be expensive at this scale. Archive outputs between seeds.
+# Repeat with different seeds and compare independent before/after device checks.
+# Known limits: no active health probes, flow-controlled UDS/J1939/SDO client,
+# CAN-FD transport setup, controller error injection, or complete protocol coverage.
+# Maximum-speed bursts below are intentional stress, not queue-saturation prevention.
+# For an initial UDS run use rate_mode: 0 and uds_max_payload_len: 1 in udsic.
+# RX error/remote frames are saved but excluded from application counts/feedback.
+# RX uses host-dequeue timestamps; original adapter times remain in frame metadata.
+#
 # Global defaults applied to every enabled protocol unless overridden below.
 global:
   # CAN interface/backend selector. Examples: "can0" (SocketCAN), "pcan:PCAN_USBBUS1" (PCAN).
   interface: pcan:PCAN_USBBUS1
+  # Synthetic bench rate; replace with the actual bus bitrate.
+  bitrate: 500000
   # Sending mode: 1 = max speed, 0 = explicit timer-based pacing in the shared send loop.
   rate_mode: 1
   # Source addressing mode. "rand" means randomized source behavior where applicable.
@@ -12,97 +31,125 @@ global:
   packet_count: 1000000
   # Print progress every N generated frames.
   print_interval: 10000
-  # RNG seed for reproducible fuzz runs.
+  # RNG seed; observed traffic can change adaptive sequences even with this seed.
   seed: 1337
+  # This profile opts into RX/failure capture and mixed feedback below.
+  # The application default for save_responses stays false.
+  save_responses: true
+  # Final receive-only window, not a per-request wait or an active health probe.
+  response_drain_seconds: 2.0
   # Probability (0..1) that each mutation in a mutation_chain is applied.
   mutation_rate: 0.85
   # Optional run summary output (aggregate for YAML runs).
   summary_enabled: true
   # Path for summary JSON when summary_enabled=true.
   summary_file: ./replay/casic_indepth_summary.json
+  # Generate offline health indicators from this run's summary/correlation artifacts.
+  health_report_enabled: true
+  # Output path for the offline health report.
+  health_report_file: ./replay/casic_indepth_health.json
   # Optional profile label added to replay metadata.
-  profile_name: indepth
+  profile_name: indepth-classic-mixed-feedback
 
 # Per-protocol sections. Set enabled=false to skip that protocol entirely.
 protocols:
   cansic:
+    responses_file: .\replay\cansic_indepth_responses.jsonl
+    # Mix observed-traffic mutation with random ID/payload exploration.
+    raw_feedback_probability: 0.25
     # Enable/disable raw CAN fuzzing section.
     enabled: true
-    # Allow CAN-FD frame generation for this section.
-    can_fd: true
+    # Classic CAN: the current PCAN transport does not configure an FD channel.
+    can_fd: false
     # Single fallback mutation mode when no mutation_chain is provided.
     mutation: structured
-    # Ordered chain of mutations applied to payloads.
-    mutation_chain: bitflip,nibbleflip,byteflip,boundary,swap,arithmetic,truncate,expand,structured
+    # No expand: mutation runs AFTER payload sizing and could exceed 8 classic bytes.
+    mutation_chain: bitflip,nibbleflip,byteflip,boundary,swap,arithmetic,truncate,structured
     # Minimum random payload length (bytes).
     payload_min_len: 0
     # Maximum random payload length (bytes); capped by protocol frame limits.
-    payload_max_len: 64
+    payload_max_len: 8
     # Probability (0..1) to use 29-bit extended CAN ID.
-    raw_extended_id_probability: 0.8
-    # Probability (0..1) to emit CAN-FD frames (in addition to can_fd setting).
-    raw_fd_probability: 0.95
-    # Probability (0..1) to tag frame as error-injection request (backend dependent).
-    raw_error_injection_probability: 0.15
+    raw_extended_id_probability: 0.5
+    raw_fd_probability: 0.0
+    # Metadata-only knob: current transport cannot inject controller error frames.
+    raw_error_injection_probability: 0.0
     # Output file for replay capture of sent frames.
     save_replay_file: ./replay/cansic_indepth.jsonl
 
   udsic:
+    responses_file: .\replay\uds_indepth_responses.jsonl
+    # Optional description metadata (requires .[descriptions]); choose odx OR pdx.
+    # odx: ./casic/examples/uds/synthetic.odx-d
+    # pdx: ./casic/examples/uds/synthetic.pdx
+    # odx_variant: SyntheticBenchVariant
     # Enable/disable UDS fuzzing section.
     enabled: true
     # UDS request arbitration ID (tester -> ECU).
     uds_request_id: 0x7E0
     # Expected UDS response arbitration ID filter (ECU -> tester).
     uds_response_id: 0x7E8
+    # Change IDs and this flag together for a target using extended addressing IDs.
+    uds_extended_id: false
     # Probability (0..1) to force invalid/unusual UDS service IDs.
     uds_invalid_sid_probability: 0.25
     # Probability (0..1) to corrupt ISO-TP PCI bytes.
-    uds_malformed_pci_probability: 0.2
+    uds_malformed_pci_probability: 0.1
     # Probability (0..1) to prefer stateful UDS service progression.
-    uds_sequence_awareness_probability: 0.95
+    uds_sequence_awareness_probability: 0.6
     # Probability (0..1) to adapt requests after negative responses (NRC-aware).
-    uds_negative_response_awareness_probability: 0.9
+    uds_negative_response_awareness_probability: 0.6
     # Probability (0..1) to adapt UDS services based on prior response outcomes.
-    uds_adaptive_sequence_probability: 0.9
+    uds_adaptive_sequence_probability: 0.45
     # Probability (0..1) of explicit backoff branch after NRC responses.
-    uds_nrc_backoff_probability: 0.45
+    uds_nrc_backoff_probability: 0.25
     # Probability (0..1) of advertising a wrong single-frame payload length.
-    uds_single_frame_length_mismatch_probability: 0.25
+    uds_single_frame_length_mismatch_probability: 0.2
     # Probability (0..1) of advertising a wrong first-frame total length.
-    uds_first_frame_length_mismatch_probability: 0.25
+    uds_first_frame_length_mismatch_probability: 0.2
     # Probability (0..1) of injecting consecutive-frame sequence anomalies.
     uds_consecutive_frame_sequence_anomaly_probability: 0.3
     # Probability (0..1) of probing recovery paths after prior state/NRC outcomes.
-    uds_recovery_probe_probability: 0.45
-    # Maximum application payload length before ISO-TP segmentation.
-    uds_max_payload_len: 512
+    uds_recovery_probe_probability: 0.2
+    # Maximum RANDOM EXTRA bytes, in addition to SID/subfunction/stateful data.
+    # 24 gives ~24% single-frame candidates without extra stateful data, plus
+    # short multi-frame cases. Use a separate long-burst campaign with e.g. 512
+    # for CF sequence wrap; that makes single-frame candidates only ~1%.
+    # Bursts do not wait for FlowControl and are not valid ISO-TP exchanges.
+    uds_max_payload_len: 24
     # Optional request-response correlation report.
     correlation_enabled: true
     # Output CSV path for UDS correlation report.
     correlation_report_file: ./replay/udsic_indepth_correlation.csv
     # Request-response match window in seconds.
-    correlation_window_seconds: 2.0
+    correlation_window_seconds: 5.0
+    response_drain_seconds: 5.0
     # Output file for replay capture of sent UDS frames.
     save_replay_file: ./replay/udsic_indepth.jsonl
 
   j1939sic:
+    responses_file: .\replay\j1939_indepth_responses.jsonl
+    j1939_feedback_probability: 0.35
+    # Optional message/signal metadata (requires .[descriptions]).
+    # dbc: ./casic/examples/j1939/synthetic.dbc
     # Enable/disable J1939 fuzzing section.
     enabled: true
-    # J1939 priority (0 highest .. 7 lowest).
-    j1939_priority: 0
-    # J1939 PGN base value for generation.
-    j1939_pgn: 0xFEF2
-    # J1939 source address.
+    # null explores priorities 0..7 and PGNs rather than pinning a single message.
+    j1939_priority: null
+    j1939_pgn: null
+    # Synthetic tester source; no address-claim state machine is implemented.
     j1939_sa: 0x80
-    # J1939 destination address.
-    j1939_da: 0xFE
+    # Synthetic peer, not the reserved null address 0xFE; replace for your bench.
+    # Used by addressed TP; PDU2 is broadcast and random PDU1 IDs embed their PS.
+    j1939_da: 0x90
     # Probability (0..1) to generate transport-protocol-like traffic patterns.
-    j1939_tp_probability: 0.9
+    j1939_tp_probability: 0.5
     # Probability (0..1) to use boundary/invalid-ish PGN variants.
     j1939_invalid_pgn_probability: 0.25
     # Probability (0..1) of TP DT sequence anomalies (gap/duplicate/reorder).
     j1939_tp_sequence_anomaly_probability: 0.35
-    # Probability (0..1) of TP timing fault metadata injection.
+    # Metadata ONLY: the engine does not apply the requested TP delay.
+    # Keep visible for trace classification; this is not timing-fault coverage.
     j1939_tp_timing_fault_probability: 0.25
     # Probability (0..1) of truncating TP DT bursts before completion.
     j1939_tp_incomplete_dt_probability: 0.25
@@ -120,6 +167,8 @@ protocols:
     save_replay_file: ./replay/j1939sic_indepth.jsonl
 
   cosic:
+    responses_file: .\replay\cosic_indepth_responses.jsonl
+    canopen_feedback_probability: 0.35
     # Enable/disable CANopen fuzzing section.
     enabled: true
     # CANopen node ID used for deriving standard COB-IDs when overrides are not set.
@@ -133,20 +182,24 @@ protocols:
     # Explicit RPDO1 COB-ID override.
     rpdo1_cobid: 0x261
     # Probability (0..1) to corrupt SDO command/subindex fields.
-    canopen_invalid_sdo_probability: 0.4
+    # Expedited command normalization can overwrite command corruption;
+    # this setting also injects invalid subindices, not guaranteed invalid CS.
+    canopen_invalid_sdo_probability: 0.25
     # Probability (0..1) to adapt SDO targeting based on observed abort codes.
-    canopen_abort_aware_probability: 0.9
+    canopen_abort_aware_probability: 0.7
     # Frames to avoid recently aborted object entries.
     canopen_abort_blacklist_window: 24
     # Probability (0..1) of preferring NMT state-aware control transitions.
     canopen_nmt_state_aware_probability: 0.8
     # Probability (0..1) of generating segmented CANopen SDO download transfers.
-    canopen_segmented_sdo_probability: 0.75
+    # Segments are emitted as bursts without waiting for server acknowledgments.
+    canopen_segmented_sdo_probability: 0.5
     # Probability (0..1) of preferring entries within parser-derived array/subindex bounds.
     canopen_array_bounds_aware_probability: 0.85
     # Frame-family bias: balanced | sdo-heavy | pdo-heavy | control-heavy.
     canopen_mode_bias: sdo-heavy
-    # CANopen EDS file used to load object dictionary and mapping metadata.
-    eds: ./casic/examples/node.eds
+    # Tiny synthetic EDS: no array/PDO-map coverage merely from enabling knobs.
+    # Replace with the target EDS/XDD/XDC for meaningful dictionary coverage.
+    eds: ./casic/examples/canopen/node.eds
     # Output file for replay capture of sent CANopen frames.
     save_replay_file: ./replay/cosic_indepth.jsonl

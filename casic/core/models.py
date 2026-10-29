@@ -88,8 +88,26 @@ class FuzzConfig:
     canopen_segmented_sdo_probability: float = 0.0
     canopen_array_bounds_aware_probability: float = 0.0
     canopen_mode_bias: str | None = None
+    bitrate: int = 500000
+    uds_extended_id: bool = False
+    save_responses: bool = False
+    responses_file: Path | None = None
+    response_drain_seconds: float = 0.1
+    raw_feedback_probability: float = 0.0
+    canopen_feedback_probability: float = 0.0
+    j1939_feedback_probability: float = 0.0
 
     def __post_init__(self):
+        if not isinstance(self.save_responses, bool):
+            raise ValueError("save_responses must be a boolean")
+        if not 0.0 <= self.response_drain_seconds <= 60.0:
+            raise ValueError("response_drain_seconds must be in range 0..60")
+        for name in ("raw_feedback_probability", "canopen_feedback_probability", "j1939_feedback_probability"):
+            _validate_probability(name, getattr(self, name))
+        if isinstance(self.bitrate, bool) or not isinstance(self.bitrate, int) or not 10000 <= self.bitrate <= 1000000:
+            raise ValueError(f"bitrate must be an integer in range 10000..1000000, got {self.bitrate!r}")
+        if not isinstance(self.uds_extended_id, bool):
+            raise ValueError("uds_extended_id must be a boolean")
         if self.rate_mode not in (0, 1):
             raise ValueError(f"rate_mode must be 0 or 1, got {self.rate_mode}")
 
@@ -191,6 +209,11 @@ class FuzzStats:
     sent: int = 0
     received: int = 0
     parse_errors: int = 0
+    transport_errors: int = 0
+    observed_frames: int = 0
+    ordinary_received: int = 0
+    can_error_frames: int = 0
+    remote_frames: int = 0
 
 
 @dataclass(slots=True)
@@ -238,6 +261,11 @@ class ProtocolRunSummary:
     received: int
     errors: int
     burst_frames: int
+    transport_errors: int = 0
+    observed_frames: int = 0
+    ordinary_received: int = 0
+    can_error_frames: int = 0
+    remote_frames: int = 0
 
 
 @dataclass(slots=True)

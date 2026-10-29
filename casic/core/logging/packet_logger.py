@@ -118,6 +118,9 @@ class PacketLogger:
             "correlation_report_file",
             "correlation_window_seconds",
             "save_replay_file",
+            "save_responses",
+            "responses_file",
+            "response_drain_seconds",
             "profile_name",
             "print_interval",
         ):
@@ -136,6 +139,11 @@ class PacketLogger:
             "sent": sum(item.sent for item in runs),
             "received": sum(item.received for item in runs),
             "errors": sum(item.errors for item in runs),
+            "transport_errors": sum(item.transport_errors for item in runs),
+            "observed_frames": sum(item.observed_frames for item in runs),
+            "ordinary_received": sum(item.ordinary_received for item in runs),
+            "can_error_frames": sum(item.can_error_frames for item in runs),
+            "remote_frames": sum(item.remote_frames for item in runs),
             "burst_frames": sum(item.burst_frames for item in runs),
             "duration_ms": round(sum(item.duration_ms for item in runs), 3),
         }

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import time
+import json
+import logging
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from pathlib import Path
+from typing import Any, TextIO
 
 from casic.core.generator import RandomGenerator
 from casic.core.logging import PacketLogger
@@ -18,13 +22,40 @@ class BaseFuzzer(ABC):
         self.config = config
         self.rng = RandomGenerator(seed=config.seed)
         self.logger = PacketLogger()
-        self.transport = CanTransport(interface=config.interface)
         self.stats = FuzzStats()
+        self._capture_handle: TextIO | None = None
+        self._pending_transport_errors: list[dict[str, Any]] = []
+        self._capture_phase = "run"
+        self.run_id = PacketLogger.deterministic_run_id(self.protocol_name, self.config)
+        self.transport = CanTransport(
+            interface=config.interface, bitrate=config.bitrate, on_error=self._on_transport_error,
+        )
         self._next_send_ts: float | None = None
         self._run_started_at: float | None = None
         self._run_ended_at: float | None = None
         self._burst_frames_sent: int = 0
-        self.run_id = PacketLogger.deterministic_run_id(self.protocol_name, self.config)
+
+    def _write_capture(self, event: dict[str, Any]):
+        if self._capture_handle is not None:
+            record = {
+                "schema_version": 1, "protocol": self.protocol_name, "run_id": self.run_id,
+                "seed": self.config.seed, "profile_name": self.config.profile_name,
+                "interface": self.config.interface, "bitrate": self.config.bitrate,
+                "observed_at": time.time(), "phase": self._capture_phase, **event,
+            }
+            self._capture_handle.write(json.dumps(record) + "\n")
+            self._capture_handle.flush()
+
+    def _on_transport_error(self, error: dict[str, Any]):
+        self.stats.transport_errors += 1
+        event = {"event": "transport_error", **error}
+        frame = event.get("frame")
+        if isinstance(frame, CANFrame):
+            event["frame"] = PacketLogger._frame_to_json(frame)
+        if self._capture_handle is not None:
+            self._write_capture(event)
+        elif self.config.save_responses:
+            self._pending_transport_errors.append(event)
 
     @abstractmethod
     def generate_frame(self, sequence_number: int) -> CANFrame:
@@ -36,18 +67,46 @@ class BaseFuzzer(ABC):
     def on_response(self, frame: CANFrame):
         return
 
-    def monitor_response(self):
+    def monitor_response(self, timeout: float = 0.0) -> bool:
+        response = self.transport.recv(timeout=timeout)
+        if response is None:
+            return False
+        self.stats.observed_frames += 1
+        is_error = bool(response.meta.get("is_error_frame"))
+        is_remote = bool(response.meta.get("is_remote_frame"))
+        if is_error:
+            self.stats.can_error_frames += 1
+        elif is_remote:
+            self.stats.remote_frames += 1
+        else:
+            self.stats.ordinary_received += 1
+        accepted = not (is_error or is_remote) and self.should_accept_response(response)
+        self._write_capture({
+            "event": "received", "accepted": accepted,
+            "frame_kind": "can_error" if is_error else "remote" if is_remote else "data",
+            "frame": PacketLogger._frame_to_json(response),
+        })
+        if not accepted:
+            return True
         try:
-            response = self.transport.recv(timeout=0.0)
-            if response is None:
-                return
-            if not self.should_accept_response(response):
-                return
             self.logger.record_received(response)
             self.stats.received += 1
             self.on_response(response)
         except Exception:
             self.stats.parse_errors += 1
+            logging.getLogger(__name__).exception("Response processing failed")
+        return True
+
+    def _poll_responses(self):
+        if self.config.save_responses:
+            for _ in range(256):
+                if not self.monitor_response():
+                    break
+        elif self.protocol_name in {"uds", "j1939", "cosic"} or self.config.raw_feedback_probability > 0:
+            self.monitor_response()
+
+    def on_frame_sent(self, frame: CANFrame):
+        return
 
     def _build_run_summary(self) -> ProtocolRunSummary | None:
         if self._run_started_at is None or self._run_ended_at is None:
@@ -66,6 +125,11 @@ class BaseFuzzer(ABC):
             received=self.stats.received,
             errors=self.stats.parse_errors,
             burst_frames=self._burst_frames_sent,
+            transport_errors=self.stats.transport_errors,
+            observed_frames=self.stats.observed_frames,
+            ordinary_received=self.stats.ordinary_received,
+            can_error_frames=self.stats.can_error_frames,
+            remote_frames=self.stats.remote_frames,
         )
 
     def _wait_for_send_slot(self):
@@ -84,6 +148,30 @@ class BaseFuzzer(ABC):
         self._next_send_ts = max(next_slot, time.monotonic())
 
     def run(self, write_summary: bool = True, write_correlation: bool = True) -> ProtocolRunSummary | None:
+        try:
+            path = self.config.responses_file
+            if self.config.save_responses:
+                path = path or Path(f"{self.protocol_name}_responses.jsonl")
+                for other in (self.config.replay_file, self.config.save_replay_file,
+                              self.config.summary_file, self.config.correlation_report_file):
+                    if other is not None and path.resolve() == other.resolve():
+                        raise ValueError("responses_file must differ from replay, summary, and correlation paths")
+                path.parent.mkdir(parents=True, exist_ok=True)
+            capture = path.open("w", encoding="utf-8") if self.config.save_responses and path is not None else nullcontext()
+            with capture as handle:
+                self._capture_handle = handle
+                try:
+                    for event in self._pending_transport_errors:
+                        self._write_capture(event)
+                    self._pending_transport_errors.clear()
+                    return self._run(write_summary, write_correlation)
+                finally:
+                    self.transport.close()
+                    self._capture_handle = None
+        finally:
+            self.transport.close()
+
+    def _run(self, write_summary: bool, write_correlation: bool) -> ProtocolRunSummary | None:
         self._run_started_at = time.time()
         try:
             if self.config.replay_file:
@@ -100,6 +188,7 @@ class BaseFuzzer(ABC):
                 self.transport.send(frame)
                 self.logger.record_sent(frame)
                 self.stats.sent += 1
+                self.on_frame_sent(frame)
 
                 burst_frames: list[CANFrame] = frame.meta.get("burst", [])
                 for burst in burst_frames:
@@ -108,18 +197,27 @@ class BaseFuzzer(ABC):
                     self.logger.record_sent(burst)
                     self.stats.sent += 1
                     self._burst_frames_sent += 1
+                    self.on_frame_sent(burst)
 
-                if self.protocol_name in {"uds", "j1939", "cosic"}:
-                    self.monitor_response()
+                self._poll_responses()
 
                 if self.config.print_interval > 0 and i % self.config.print_interval == 0:
                     print(
                         f"[{self.protocol_name}] sent={self.stats.sent} "
-                        f"recv={self.stats.received} live={self.transport.is_live}"
+                        f"recv={self.stats.received} "
+                        f"can_errors={self.stats.can_error_frames} "
+                        f"transport_errors={self.stats.transport_errors} "
+                        f"live={self.transport.is_live}"
                     )
         except KeyboardInterrupt:
             print("Interrupted by user.")
         finally:
+            if self.config.save_responses:
+                self._capture_phase = "drain"
+                deadline = time.monotonic() + self.config.response_drain_seconds
+                while time.monotonic() < deadline:
+                    self.monitor_response(timeout=min(0.01, max(0.0, deadline - time.monotonic())))
+            self.transport.close()
             self._run_ended_at = time.time()
             if self.config.save_replay_file and self.logger.sent:
                 self.logger.save_replay(
@@ -166,7 +264,6 @@ class BaseFuzzer(ABC):
                         rows=[],
                         unsupported_reason="Protocol does not support request-response correlation",
                     )
-            self.transport.close()
 
         return self._build_run_summary()
 
@@ -174,5 +271,9 @@ class BaseFuzzer(ABC):
         records = self.logger.load_replay(replay_file)
         for idx, record in enumerate(records, start=1):
             self.transport.send(record.frame)
+            self.on_frame_sent(record.frame)
+            if self.config.save_responses:
+                self._capture_phase = "replay"
+                self._poll_responses()
             if self.config.print_interval > 0 and idx % self.config.print_interval == 0:
                 print(f"[{self.protocol_name}] replayed={idx}")

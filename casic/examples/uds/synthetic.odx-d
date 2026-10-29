@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic parser example only. Not a real ECU specification. -->
+<ODX xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" MODEL-VERSION="2.2.0">
+  <DIAG-LAYER-CONTAINER ID="DLC.SYNTHETIC">
+    <SHORT-NAME>SyntheticContainer</SHORT-NAME>
+    <ECU-VARIANTS>
+      <ECU-VARIANT ID="DL.SYNTHETIC">
+        <SHORT-NAME>SyntheticBenchVariant</SHORT-NAME>
+        <DIAG-COMMS>
+          <DIAG-SERVICE ID="SERVICE.SYNTHETIC.READ">
+            <SHORT-NAME>ReadSyntheticValue</SHORT-NAME>
+            <REQUEST-REF ID-REF="REQUEST.SYNTHETIC.READ"/>
+          </DIAG-SERVICE>
+        </DIAG-COMMS>
+        <REQUESTS>
+          <REQUEST ID="REQUEST.SYNTHETIC.READ">
+            <SHORT-NAME>ReadSyntheticValueRequest</SHORT-NAME>
+            <PARAMS>
+              <PARAM xsi:type="CODED-CONST" SEMANTIC="SERVICE-ID">
+                <SHORT-NAME>SID</SHORT-NAME>
+                <BYTE-POSITION>0</BYTE-POSITION>
+                <DIAG-CODED-TYPE xsi:type="STANDARD-LENGTH-TYPE" BASE-DATA-TYPE="A_UINT32">
+                  <BIT-LENGTH>8</BIT-LENGTH>
+                </DIAG-CODED-TYPE>
+                <CODED-VALUE>34</CODED-VALUE>
+              </PARAM>
+              <PARAM xsi:type="CODED-CONST" SEMANTIC="ID">
+                <SHORT-NAME>SyntheticIdentifier</SHORT-NAME>
+                <BYTE-POSITION>1</BYTE-POSITION>
+                <DIAG-CODED-TYPE xsi:type="STANDARD-LENGTH-TYPE" BASE-DATA-TYPE="A_UINT32">
+                  <BIT-LENGTH>16</BIT-LENGTH>
+                </DIAG-CODED-TYPE>
+                <CODED-VALUE>4660</CODED-VALUE>
+              </PARAM>
+            </PARAMS>
+          </REQUEST>
+        </REQUESTS>
+      </ECU-VARIANT>
+    </ECU-VARIANTS>
+  </DIAG-LAYER-CONTAINER>
+</ODX>

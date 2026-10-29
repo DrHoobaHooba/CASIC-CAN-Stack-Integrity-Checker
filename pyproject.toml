@@ -4,20 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "casic"
-version = "0.0.6"
+version = "0.0.7"
 description = "CASIC - CAN Stack Integrity Checker"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "CASIC Contributors" }]
 license = "Apache-2.0"
-classifiers = [
-	"License :: OSI Approved :: Apache Software License",
-]
 dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
 can = ["python-can>=4.3"]
 test = ["pytest>=8.0"]
+descriptions = ["odxtools>=10,<12", "cantools>=40,<42"]
 
 [project.scripts]
 casic = "casic.cli.config_runner:main"
@@ -25,6 +23,10 @@ cansic = "casic.cli.main:main_cansic"
 udsic = "casic.cli.main:main_udsic"
 j1939sic = "casic.cli.main:main_j1939sic"
 cosic = "casic.cli.main:main_cosic"
+casic-health-report = "casic.cli.health_report:main"
+casic-replay-check = "casic.cli.replay_check:main"
+casic-pcan-check = "casic.cli.pcan_check:main"
+casic-describe = "casic.cli.describe:main"
 
 [tool.setuptools]
 include-package-data = true
@@ -32,3 +34,6 @@ license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 include = ["casic*"]
+
+[tool.setuptools.package-data]
+casic = ["examples/*.yaml", "examples/canopen/*", "examples/uds/*", "examples/j1939/*"]

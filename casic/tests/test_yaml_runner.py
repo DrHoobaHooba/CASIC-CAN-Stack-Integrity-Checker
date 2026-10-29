@@ -1,10 +1,33 @@
 from pathlib import Path
 import json
+import subprocess
+import sys
 
 import pytest
 
 from casic.cli.config_runner import run_from_yaml
 from casic.cli.yaml_config import parse_int
+
+
+def test_module_entry_point_displays_help():
+    result = subprocess.run(
+        [sys.executable, "-m", "casic.cli.config_runner", "--help"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0
+    assert "--config" in result.stdout
+
+
+def test_module_entry_point_runs_disabled_config(tmp_path: Path):
+    cfg = tmp_path / "disabled.yaml"
+    cfg.write_text("protocols: {}\n", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "casic.cli.config_runner", "--config", str(cfg)],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    for name in ("cansic", "udsic", "j1939sic", "cosic"):
+        assert f"skip {name}" in result.stdout
 
 
 def test_parse_int_hex_and_decimal():
@@ -81,6 +104,7 @@ protocols:
 
 def test_yaml_runner_writes_aggregate_summary_when_enabled(tmp_path: Path):
     summary_file = tmp_path / "summary.json"
+    health_report_file = tmp_path / "summary_health.json"
     cfg = tmp_path / "summary.yaml"
     cfg.write_text(
         f"""
@@ -115,6 +139,37 @@ protocols:
     for entry in data["runs"]:
         assert isinstance(entry["run_id"], str)
         assert len(entry["run_id"]) == 16
+
+    health = json.loads(health_report_file.read_text(encoding="utf-8"))
+    assert health["assessment"] == "not_determined"
+    assert len(health["runs"]) == 2
+    assert {entry["protocol"] for entry in health["runs"]} == {"cansic", "uds"}
+
+
+def test_yaml_runner_can_disable_automatic_health_report(tmp_path: Path):
+    summary_file = tmp_path / "summary.json"
+    cfg = tmp_path / "no_health.yaml"
+    cfg.write_text(
+        f"""
+global:
+  interface: can0
+  packet_count: 1
+  print_interval: 0
+  summary_enabled: true
+  summary_file: {summary_file.as_posix()}
+  health_report_enabled: false
+protocols:
+  cansic:
+    enabled: true
+    mutation: none
+""".strip(),
+        encoding="utf-8",
+    )
+
+    run_from_yaml(cfg)
+
+    assert summary_file.exists()
+    assert not (tmp_path / "summary_health.json").exists()
 
 
 def test_yaml_runner_run_id_is_deterministic_for_same_config(tmp_path: Path):

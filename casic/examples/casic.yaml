@@ -1,6 +1,6 @@
-# Practical default profile. For maximum-aggression profile, see casic-indepth.yaml.
+# Practical default profile. For broad classic-CAN stress, see casic-indepth.yaml.
 global:
-  # For full aggressive profile using all fuzzing knobs, use: casic/examples/casic-indepth.yaml.
+  # For mixed random/feedback stress, use: casic/examples/casic-indepth.yaml.
   # CAN interface/backend selector. Example: pcan:PCAN_USBBUS1 or can0.
   interface: pcan:PCAN_USBBUS1
   # Sending mode: 1 = max speed, 0 = explicit timer-based pacing in the shared send loop.
@@ -15,18 +15,27 @@ global:
   print_interval: 2500
   # Deterministic random seed.
   seed: 42
+  # This profile opts into RX/failure capture; the application default stays false.
+  save_responses: true
+  response_drain_seconds: 0.1
   # Per-mutation apply probability when mutation_chain is used (must be 0.0..1.0).
   mutation_rate: 0.55
   # Optional run summary output (aggregate for YAML runs).
   summary_enabled: true
   # Path for summary JSON when summary_enabled=true.
   summary_file: ./replay/casic_summary.json
+  # Generate offline health indicators from this run's summary/correlation artifacts.
+  health_report_enabled: true
+  # Output path for the offline health report.
+  health_report_file: ./replay/casic_health.json
   # Optional profile label added to replay metadata.
   profile_name: baseline-balanced
 
 # Protocol blocks: enabled=false means section is skipped and all its parameters are ignored.
 protocols:
   cansic:
+    responses_file: .\replay\cansic_responses.jsonl
+    raw_feedback_probability: 0.0
     # Enable raw CAN fuzzing.
     enabled: true
     # Generate CAN-FD frames when true.
@@ -49,6 +58,14 @@ protocols:
     save_replay_file: ./replay/cansic_from_yaml.jsonl
 
   udsic:
+    # Initial paced, single-frame-sized UDS campaign; use indepth for bursts.
+    rate_mode: 0
+    response_drain_seconds: 2.0
+    responses_file: .\replay\uds_responses.jsonl
+    # Optional description metadata (requires .[descriptions]); choose odx OR pdx.
+    # odx: ./casic/examples/uds/synthetic.odx-d
+    # pdx: ./casic/examples/uds/synthetic.pdx
+    # odx_variant: SyntheticBenchVariant
     # Enable UDS over CAN fuzzing.
     enabled: true
     # UDS request CAN-ID (tester -> ECU).
@@ -75,8 +92,8 @@ protocols:
     uds_consecutive_frame_sequence_anomaly_probability: 0.03
     # Probability of probing recovery paths after prior state/NRC outcomes.
     uds_recovery_probe_probability: 0.15
-    # Max UDS payload before/with segmentation.
-    uds_max_payload_len: 96
+    # Random EXTRA bytes after SID/subfunction/stateful data; no generated bursts.
+    uds_max_payload_len: 1
     # Optional request-response correlation report.
     correlation_enabled: false
     # Output CSV path for UDS correlation report.
@@ -85,6 +102,10 @@ protocols:
     correlation_window_seconds: 2.0
 
   j1939sic:
+    responses_file: .\replay\j1939_responses.jsonl
+    j1939_feedback_probability: 0.0
+    # Optional message/signal metadata (requires .[descriptions]).
+    # dbc: ./casic/examples/j1939/synthetic.dbc
     # Enable J1939 fuzzing.
     enabled: true
     # J1939 priority (0 highest .. 7 lowest).
@@ -117,12 +138,14 @@ protocols:
     correlation_window_seconds: 2.0
 
   cosic:
+    responses_file: .\replay\cosic_responses.jsonl
+    canopen_feedback_probability: 0.0
     # Enable CANopen fuzzing.
     enabled: true
     # CANopen node ID used for COB-ID derivation where applicable.
-    node_id: 97
+    node_id: 10
     # EDS dictionary file for object-based structured fuzzing.
-    eds: ./casic/examples/node.eds
+    eds: ./casic/examples/canopen/node.eds
     # Probability of SDO command/subindex corruption.
     canopen_invalid_sdo_probability: 0.1
     # Probability of adapting SDO targeting based on observed abort codes.
